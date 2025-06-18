@@ -1,6 +1,5 @@
 use log::{debug, error, info, warn};
-use std::io::Write;
-use std::process::{Command, Stdio};
+use pam::Client;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -20,26 +19,12 @@ pub fn pam_authenticate_user(
             return Err(PamError::ForbiddenUser(user.to_string()).into());
         }
     }
-    let mut child = Command::new("sudo")
-        .args(&["-S", "-u", user, "echo", "SUCCESS"]) // -S for stdin password, -u for user
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()?;
 
-    if let Some(stdin) = child.stdin.as_mut() {
-        writeln!(stdin, "{}", password)?;
-    }
+    let mut auth = Client::with_password("login")?;
+    auth.conversation_mut().set_credentials(user, password);
 
-    let output = child.wait_with_output()?;
-    info!("stdout: {}", String::from_utf8_lossy(&output.stdout));
-    info!("stderr: {}", String::from_utf8_lossy(&output.stderr));
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    if stdout.trim() == "SUCCESS" {
-        info!("found success marker");
-        Ok(true)
-    } else {
-        info!("NOT found success marker");
-        Ok(false)
+    match auth.authenticate() {
+        Ok(_) => Ok(true),
+        Err(e) => Err(Box::new(e)),
     }
 }

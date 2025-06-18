@@ -72,10 +72,7 @@ impl Handler for SshAcmeServer {
             }
             Err(e) => {
                 warn!("pam auth error: {}", e);
-                Ok(Auth::Reject {
-                    proceed_with_methods: None,
-                    partial_success: false,
-                })
+                Err(russh::Error::RequestDenied)
             }
         }
     }
@@ -149,7 +146,7 @@ async fn main() {
         inactivity_timeout: Some(std::time::Duration::from_secs(3600)),
         auth_rejection_time: std::time::Duration::from_secs(3),
         auth_rejection_time_initial: Some(std::time::Duration::from_secs(0)),
-        max_auth_attempts: 3,
+        max_auth_attempts: 1,
         methods: auth_methods,
         keys: vec![server_private_key],
         preferred: russh::Preferred {
