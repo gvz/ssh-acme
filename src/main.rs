@@ -13,6 +13,12 @@ use tokio::sync::Mutex;
 
 mod pam_auth;
 use pam_auth::pam_authenticate_user;
+
+mod certificat_authority;
+use crate::certificat_authority::CertificateAuthority;
+
+mod certificat_template_reader;
+
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
@@ -30,14 +36,25 @@ struct Args {
 #[derive(Clone)]
 struct SshAcmeServer {
     clients: Arc<Mutex<HashMap<usize, (ChannelId, russh::server::Handle)>>>,
+    client_ids: usize,
+    certificat_authoriy: certificat_authority::CertificateAuthority,
+}
+struct ConnectionHandler {
+    server: Arc<SshAcmeServer>,
+    username: Option<String>,
     id: usize,
 }
 
 impl Server for SshAcmeServer {
-    type Handler = Self;
-    fn new_client(&mut self, socket_addr: Option<std::net::SocketAddr>) -> Self {
-        let s = self.clone();
-        self.id += 1;
+    type Handler = ConnectionHandler;
+    fn new_client(&mut self, socket_addr: Option<std::net::SocketAddr>) -> ConnectionHandler {
+        self.client_ids += 1;
+        let s = ConnectionHandler {
+            id: self.client_ids,
+            username: None,
+            server: Arc::new(self.clone()),
+        };
+
         let client_address = match socket_addr {
             None => "Unknown".to_string(),
             Some(socket) => {
@@ -54,13 +71,14 @@ impl Server for SshAcmeServer {
     }
 }
 
-impl Handler for SshAcmeServer {
+impl Handler for ConnectionHandler {
     type Error = russh::Error;
     async fn auth_password(&mut self, user: &str, password: &str) -> Result<Auth, Self::Error> {
         //TODO: block certain users
         match pam_authenticate_user(user, password) {
             Ok(true) => {
                 info!("login for user: {} ACCEPTED", user);
+                self.username = Some(user.to_string());
                 Ok(Auth::Accept)
             }
             Ok(false) => {
@@ -83,7 +101,7 @@ impl Handler for SshAcmeServer {
         session: &mut Session,
     ) -> Result<bool, Self::Error> {
         {
-            let mut clients = self.clients.lock().await;
+            let mut clients = self.server.clients.lock().await;
             clients.insert(self.id, (channel.id(), session.handle()));
         }
         Ok(true)
@@ -95,16 +113,53 @@ impl Handler for SshAcmeServer {
         data: &[u8],
         session: &mut Session,
     ) -> Result<(), Self::Error> {
-        let echo = format!("You said: {}\n", String::from_utf8_lossy(data));
-        session.data(channel, echo.into());
+        let openssh_key = String::from_utf8_lossy(data).to_string();
+        let public_key = match certificat_authority::key_from_openssh(&openssh_key) {
+            Err(e) => {
+                let error_message = format!("failed to read openssh public key: {}", e);
+                error!("{}", &error_message);
+                session.disconnect(russh::Disconnect::ByApplication, &error_message, "en");
+                return Ok(());
+            }
+            Ok(key) => key,
+        };
+
+        info!(
+            "user {} requested signing of key: {}",
+            self.username.as_ref().unwrap(),
+            openssh_key
+        );
+        let cert = match self.server.certificat_authoriy.sign(&public_key) {
+            Ok(cert) => cert,
+            Err(e) => {
+                let error_message = format!("failed to sign certificate : {}", e);
+                error!("{}", &error_message);
+                session.disconnect(russh::Disconnect::ByApplication, &error_message, "en");
+                return Ok(());
+            }
+        };
+        let openssh_cert = match cert.to_openssh() {
+            Ok(cert) => cert,
+            Err(e) => {
+                let error_message = format!("failed to concert cert to openssh format : {}", e);
+                error!("{}", &error_message);
+                session.disconnect(russh::Disconnect::ByApplication, &error_message, "en");
+                return Ok(());
+            }
+        };
+
+        //send data back and close connection
+        session.data(channel, openssh_cert.into());
+        session.eof(channel);
+        session.close(channel);
         Ok(())
     }
 }
 
-impl Drop for SshAcmeServer {
+impl Drop for ConnectionHandler {
     fn drop(&mut self) {
         let id = self.id;
-        let clients = self.clients.clone();
+        let clients = self.server.clients.clone();
         tokio::spawn(async move {
             let mut clients = clients.lock().await;
             clients.remove(&id);
@@ -157,7 +212,8 @@ async fn main() {
     let config = Arc::new(ssh_config);
     let mut server = SshAcmeServer {
         clients: Arc::new(Mutex::new(HashMap::new())),
-        id: 0,
+        client_ids: 0,
+        certificat_authoriy: CertificateAuthority::new("test_data/test_key").unwrap(),
     };
     info!("starting server");
     server
