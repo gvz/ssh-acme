@@ -1,0 +1,22 @@
+cert_type= "user"
+key_id={{ KeyID }}
+validity_span_h= {{ ValiditySpan }}
+
+principals= [
+{% for value in Principals %}
+"{{ value }}"{% if not loop.last %},{% endif %}
+{% endfor %}
+]
+
+[critical_options]
+{% for key in CriticalOptions %}
+{{ key }} = "{{ CriticalOptions[key] }}"
+{% endfor %}
+
+
+[extensions]
+permit-x11-forwarding= ""
+permit-pty= ""
+permit-user-rc= ""
+permit-agent-forwarding=""
+
