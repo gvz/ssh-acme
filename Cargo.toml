@@ -14,10 +14,9 @@ nix = {version="0.30.1", features= ["process", "user", "socket"]}
 pam = "0.8"
 rand = "0.9.1"
 russh = {version="0.52.1", features=["async-trait"]}
-serde = "1.0.219"
+serde = {version="1.0.219", features=["derive"]}
 serde_json = {version="1.0.140"}
 ssh-key = {version="0.6.7", features=["ed25519"]}
-sshcerts = "0.14.0"
 thiserror = "2.0.12"
 tokio = {version="1.45.1",features=["full"]}
 toml = "0.8.23"
