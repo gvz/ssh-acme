@@ -1,0 +1,11 @@
+[defaults.extensionss]
+permit-x11-forwarding= ""
+permit-pty= ""
+permit-user-rc= ""
+permit-agent-forwarding=""
+
+[[users]]
+name="test"
+extra_principals=[]
+extensions={{defaults.extensions}}
+

@@ -1,0 +1,14 @@
+[ssh]
+bind="127.0.0.1"
+port=2222
+private_key="/etc/ssh/ssh_host_ed25519_key"
+
+[ca]
+ca_key="../test_data/test_key"
+
+[identity_handlers]
+user_authenticators=[
+  "pam",
+]
+
+
