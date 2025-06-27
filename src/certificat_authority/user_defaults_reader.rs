@@ -1,12 +1,10 @@
 use std::fs::File;
 use std::io::Read;
 use std::time::Duration;
-use std::{collections::HashMap, hash::Hash};
+use std::collections::HashMap;
 
 use anyhow::Result;
-use duration_str::parse as parse_duration;
-use minijinja::{Environment, context};
-use serde::{Deserialize, Deserializer};
+use serde::Deserialize;
 use toml;
 
 #[derive(Deserialize, Debug)]

@@ -1,7 +1,6 @@
 use std::fs::File;
 use std::io::{self, Read};
 use std::path::PathBuf;
-use std::{collections::HashMap, hash::Hash};
 
 use anyhow::Result;
 use serde::Deserialize;
@@ -41,7 +40,7 @@ pub fn read_config(file_path: &str) -> Result<Config> {
     let _ = config_file.read_to_string(&mut config)?;
 
     let mut config: Config = toml::from_str(&config)?;
-    config.ca.insert_config_path(&config_root);
+    let _ = config.ca.insert_config_path(&config_root);
     config.ca.check_paths()?;
 
     Ok(config)

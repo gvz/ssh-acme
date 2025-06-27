@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
 
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use serde::{Serialize, Deserialize};
 use ssh_key::rand_core::OsRng;
 use ssh_key::{
@@ -11,7 +11,6 @@ use ssh_key::{
     private::PrivateKey,
 };
 
-use std::time::{SystemTime, UNIX_EPOCH};
 pub mod config;
 pub mod ca_client;
 pub mod ca_server;

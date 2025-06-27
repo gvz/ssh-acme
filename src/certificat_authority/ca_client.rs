@@ -1,6 +1,5 @@
 use std::os::unix::net::UnixStream;
-use std::io::{self, Read, Write};
-use serde::{Serialize, Deserialize};
+use std::io::{Read, Write};
 use anyhow::Result;
 
 use super::{CaRequest, CaResponse};
