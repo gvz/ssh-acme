@@ -1,5 +1,4 @@
 use std::env;
-use std::path::PathBuf;
 use std::process::Command;
 use std::fs;
 use log::{info, error};
