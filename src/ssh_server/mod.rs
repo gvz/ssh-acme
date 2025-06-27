@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::{collections::HashMap, str::FromStr};
+use std::collections::HashMap;
 
 use anyhow::Result;
-use log::{debug, error, info, warn};
+use log::{error, info, warn};
 use russh::{
     Channel, ChannelId,
     server::{Auth, Handler, Msg, Server, Session},
@@ -150,7 +150,7 @@ impl Handler for ConnectionHandler {
             Err(e) => {
                 let error_message = format!("failed to read openssh public key: {}", e);
                 error!("{}", &error_message);
-                session.disconnect(russh::Disconnect::ByApplication, &error_message, "en");
+                let _ = session.disconnect(russh::Disconnect::ByApplication, &error_message, "en");
                 return Ok(());
             }
             Ok(key) => key,
@@ -171,13 +171,13 @@ impl Handler for ConnectionHandler {
             Ok(CaResponse::Error(e)) => {
                 let error_message = format!("CA server error: {}", e);
                 error!("{}", &error_message);
-                session.disconnect(russh::Disconnect::ByApplication, &error_message, "en");
+                let _ = session.disconnect(russh::Disconnect::ByApplication, &error_message, "en");
                 return Ok(());
             }
             Err(e) => {
                 let error_message = format!("Failed to send request to CA server: {}", e);
                 error!("{}", &error_message);
-                session.disconnect(russh::Disconnect::ByApplication, &error_message, "en");
+                let _ = session.disconnect(russh::Disconnect::ByApplication, &error_message, "en");
                 return Ok(());
             }
         };
@@ -186,15 +186,15 @@ impl Handler for ConnectionHandler {
             Err(e) => {
                 let error_message = format!("failed to concert cert to openssh format : {}", e);
                 error!("{}", &error_message);
-                session.disconnect(russh::Disconnect::ByApplication, &error_message, "en");
+                let _ = session.disconnect(russh::Disconnect::ByApplication, &error_message, "en");
                 return Ok(());
             }
         };
 
         //send data back and close connection
-        session.data(channel, openssh_cert.into());
-        session.eof(channel);
-        session.close(channel);
+        let _ = session.data(channel, openssh_cert.into());
+        let _ = session.eof(channel);
+        let _ = session.close(channel);
         Ok(())
     }
 }

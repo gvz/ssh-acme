@@ -2,8 +2,8 @@ use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
 
-use anyhow::{Result, anyhow};
-use serde::{Serialize, Deserialize};
+use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use ssh_key::rand_core::OsRng;
 use ssh_key::{
     PublicKey,
@@ -11,10 +11,9 @@ use ssh_key::{
     private::PrivateKey,
 };
 
-use std::time::{SystemTime, UNIX_EPOCH};
-pub mod config;
 pub mod ca_client;
 pub mod ca_server;
+pub mod config;
 mod user_defaults_reader;
 
 #[derive(Clone)]
@@ -81,6 +80,7 @@ pub enum CaResponse {
 #[cfg(test)]
 mod test {
     use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     use ssh_key::{
         Algorithm,
@@ -102,15 +102,20 @@ mod test {
             private_key: ca_key,
         };
 
-        let valid_after = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+        let valid_after = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
         let valid_before = valid_after + (365 * 86400); // e.g. 1 year
 
-        let cert = authority.sign_certificate(
-            subject_public_key,
-            &vec!["nobody".to_string()],
-            valid_after,
-            valid_before,
-        ).unwrap();
+        let cert = authority
+            .sign_certificate(
+                subject_public_key,
+                &vec!["nobody".to_string()],
+                valid_after,
+                valid_before,
+            )
+            .unwrap();
 
         println!("cert: {:?}", cert.extensions());
     }
