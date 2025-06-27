@@ -11,8 +11,8 @@ use ssh_key::{
 };
 
 use std::time::{SystemTime, UNIX_EPOCH};
-mod certificat_template_reader;
 pub mod config;
+mod user_defaults_reader;
 
 #[derive(Clone)]
 pub struct CertificateAuthority {
