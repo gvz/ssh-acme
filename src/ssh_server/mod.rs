@@ -10,7 +10,7 @@ use russh::{
 };
 use tokio::sync::Mutex;
 
-use crate::certificat_authority::{self, CertificateAuthority};
+use crate::certificat_authority::{self, ca_client::CaClient, CaRequest, CaResponse};
 use crate::identiy_handlers::{Credential, UserAuthenticator};
 
 pub(crate) mod config;
@@ -20,7 +20,7 @@ use config::SshServerConfig;
 pub struct SshAcmeServer {
     clients: Arc<Mutex<HashMap<usize, (ChannelId, russh::server::Handle)>>>,
     client_ids: usize,
-    certificate_authority: CertificateAuthority,
+    ca_client: CaClient,
     config: SshServerConfig,
     user_authenticators: Vec<Box<dyn UserAuthenticator + Send + Sync>>,
 }
@@ -33,13 +33,13 @@ pub struct ConnectionHandler {
 impl SshAcmeServer {
     pub fn new(
         config: SshServerConfig,
-        certificate_authority: CertificateAuthority,
+        ca_client: CaClient,
         user_authenticators: Vec<Box<dyn UserAuthenticator + Send + Sync>>,
     ) -> Self {
         SshAcmeServer {
             clients: Arc::new(Mutex::new(HashMap::new())),
             client_ids: 0,
-            certificate_authority,
+            ca_client,
             config,
             user_authenticators,
         }
@@ -161,10 +161,21 @@ impl Handler for ConnectionHandler {
             self.username.as_ref().unwrap(),
             openssh_key
         );
-        let cert = match self.server.certificate_authority.sign(&public_key) {
-            Ok(cert) => cert,
+        let cert = match self.server.ca_client.send_request(&CaRequest::SignCertificate {
+            public_key: public_key.clone(),
+            principals: vec![self.username.as_ref().unwrap().clone()],
+            valid_after: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
+            valid_before: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() + (365 * 86400),
+        }) {
+            Ok(CaResponse::SignedCertificate(cert)) => cert,
+            Ok(CaResponse::Error(e)) => {
+                let error_message = format!("CA server error: {}", e);
+                error!("{}", &error_message);
+                session.disconnect(russh::Disconnect::ByApplication, &error_message, "en");
+                return Ok(());
+            }
             Err(e) => {
-                let error_message = format!("failed to sign certificate : {}", e);
+                let error_message = format!("Failed to send request to CA server: {}", e);
                 error!("{}", &error_message);
                 session.disconnect(russh::Disconnect::ByApplication, &error_message, "en");
                 return Ok(());
@@ -198,3 +209,4 @@ impl Drop for ConnectionHandler {
         });
     }
 }
+

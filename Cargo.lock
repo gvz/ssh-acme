@@ -2036,6 +2036,7 @@ dependencies = [
  "rand_core 0.6.4",
  "rsa",
  "sec1",
+ "serde",
  "sha2",
  "signature",
  "ssh-cipher",

@@ -3,6 +3,7 @@ use std::io::Read;
 use std::path::PathBuf;
 
 use anyhow::{Result, anyhow};
+use serde::{Serialize, Deserialize};
 use ssh_key::rand_core::OsRng;
 use ssh_key::{
     PublicKey,
@@ -12,6 +13,8 @@ use ssh_key::{
 
 use std::time::{SystemTime, UNIX_EPOCH};
 pub mod config;
+pub mod ca_client;
+pub mod ca_server;
 mod user_defaults_reader;
 
 #[derive(Clone)]
@@ -30,18 +33,22 @@ impl CertificateAuthority {
         Ok(CertificateAuthority { private_key })
     }
 
-    pub fn sign(&self, public_key: &PublicKey) -> Result<Certificate> {
-        // Create certificate validity window
-        let valid_after = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
-        let valid_before = valid_after + (365 * 86400); // e.g. 1 year
-
+    pub fn sign_certificate(
+        &self,
+        public_key: &PublicKey,
+        principals: &[String],
+        valid_after: u64,
+        valid_before: u64,
+    ) -> Result<Certificate> {
         // Initialize certificate builder
         let mut cert_builder =
             CertBuilder::new_with_random_nonce(&mut OsRng, public_key, valid_after, valid_before)?;
         cert_builder.serial(42)?; // Optional: serial number chosen by the CA
         cert_builder.key_id("nobody-cert-02")?; // Optional: CA-specific key identifier
         cert_builder.cert_type(CertType::User)?; // User or host certificate
-        cert_builder.valid_principal("nobody")?; // Unix username or hostname
+        for principal in principals {
+            cert_builder.valid_principal(principal)?; // Unix username or hostname
+        }
         cert_builder.comment("nobody@example.com")?; // Comment (typically an email address)
         cert_builder.extension("test".to_string(), "test_data".to_string())?;
 
@@ -53,6 +60,22 @@ impl CertificateAuthority {
 
 pub fn key_from_openssh(openssh_key: &str) -> Result<PublicKey> {
     Ok(PublicKey::from_openssh(openssh_key)?)
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum CaRequest {
+    SignCertificate {
+        public_key: PublicKey,
+        principals: Vec<String>,
+        valid_before: u64,
+        valid_after: u64,
+    },
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum CaResponse {
+    SignedCertificate(Certificate),
+    Error(String),
 }
 
 #[cfg(test)]
@@ -79,7 +102,15 @@ mod test {
             private_key: ca_key,
         };
 
-        let cert = authority.sign(subject_public_key).unwrap();
+        let valid_after = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+        let valid_before = valid_after + (365 * 86400); // e.g. 1 year
+
+        let cert = authority.sign_certificate(
+            subject_public_key,
+            &vec!["nobody".to_string()],
+            valid_after,
+            valid_before,
+        ).unwrap();
 
         println!("cert: {:?}", cert.extensions());
     }
