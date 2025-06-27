@@ -1,14 +1,13 @@
-[defaults]
-validity="7d"
+validity="7s"
 principals=[]
 extensions=[
-    "permit-x11-forwarding"
-    "permit-pty"
-    "permit-user-rc"
+    "permit-x11-forwarding",
+    "permit-pty",
+    "permit-user-rc",
     "permit-agent-forwarding"
 ]
 
-[defaults.critical_options]
+[critical_options]
 
 
 
