@@ -17,7 +17,7 @@ rand = "0.9.1"
 russh = {version="0.52.1", features=["async-trait"]}
 serde = {version="1.0.219", features=["derive"]}
 serde_json = {version="1.0.140"}
-ssh-key = {version="0.6.7", features=["ed25519"]}
+ssh-key = {version="0.6.7", features=["ed25519", "serde"]}
 thiserror = "2.0.12"
 tokio = {version="1.45.1",features=["full"]}
 toml = "0.8.23"
