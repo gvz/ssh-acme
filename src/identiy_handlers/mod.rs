@@ -16,15 +16,18 @@ pub(crate) struct IndentityHanderConfig {
 pub(crate) enum Error {
     #[error("user {0} is forbidden from logging in")]
     ForbiddenUser(String),
+    #[allow(dead_code)]
     #[error("Credential type {0} not supported by {1}")]
     CredentialNotSupported(String, String),
 }
 #[derive(Clone)]
 pub(crate) enum Credential<'a> {
     Password(&'a str),
+    #[allow(dead_code)]
     PublicKey(&'a PublicKey),
 }
 
+#[allow(dead_code)]
 fn credentinal_type_name(credential: Credential) -> &str {
     match credential {
         Credential::Password(_) => "Password",

@@ -28,7 +28,7 @@ async fn test_server_startup() {
         [ssh]
         host_key_dir = "{}/host_keys"
         listen_address = "0.0.0.0:2222"
-        bind = "127.0.0.1:2222"
+        bind = "0.0.0.0"
         port = 2222
         private_key = "{}/host_keys/ssh_host_rsa_key"
 

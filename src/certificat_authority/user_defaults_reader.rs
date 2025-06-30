@@ -16,6 +16,7 @@ where
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 pub struct UserDefaults {
     #[serde(deserialize_with = "deserialize_duration_from_string")]
     pub validity: Duration,
@@ -24,6 +25,7 @@ pub struct UserDefaults {
     pub critical_options: HashMap<String, String>,
 }
 
+#[allow(dead_code)]
 pub fn read_user_defaults(file_path: &str) -> Result<UserDefaults> {
     let mut config_file = File::open(file_path)?;
     let mut config_text = String::new();
