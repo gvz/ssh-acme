@@ -1,4 +1,4 @@
-validity="7s"
+validity="7d"
 principals=[]
 extensions=[
     "permit-x11-forwarding",

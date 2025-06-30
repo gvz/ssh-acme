@@ -46,6 +46,7 @@ mod test {
     #[test]
     fn read_cert_config_test() {
         let config = read_certificate_config("./test_data/user_cert_config.toml").unwrap();
+        assert
         println!("config: {:?}", config);
     }
 }
