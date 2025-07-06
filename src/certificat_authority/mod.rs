@@ -3,7 +3,8 @@ use std::io::Read;
 use std::path::PathBuf;
 
 use anyhow::Result;
-use serde::{Serialize, Deserialize};
+use log::info;
+use serde::{Deserialize, Serialize};
 use ssh_key::rand_core::OsRng;
 use ssh_key::{
     PublicKey,
@@ -66,8 +67,8 @@ pub enum CaRequest {
     SignCertificate {
         public_key: PublicKey,
         principals: Vec<String>,
-        valid_before: u64,
         valid_after: u64,
+        valid_before: u64,
     },
 }
 
