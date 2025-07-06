@@ -1,16 +1,16 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::collections::HashMap;
 
 use anyhow::Result;
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 use russh::{
     Channel, ChannelId,
     server::{Auth, Handler, Msg, Server, Session},
 };
 use tokio::sync::Mutex;
 
-use crate::certificat_authority::{self, ca_client::CaClient, CaRequest, CaResponse};
+use crate::certificat_authority::{self, CaRequest, CaResponse, ca_client::CaClient};
 use crate::identiy_handlers::{Credential, UserAuthenticator};
 
 pub(crate) mod config;
@@ -72,6 +72,10 @@ impl SshAcmeServer {
             },
             ..Default::default()
         };
+        info!(
+            "starting ssh server at {}:{}",
+            &self.config.bind, self.config.port
+        );
         let ssh_config = Arc::new(ssh_config);
         self.run_on_address(ssh_config, (self.config.bind.clone(), self.config.port))
             .await
@@ -97,7 +101,7 @@ impl Server for SshAcmeServer {
                 format!("{}:{}", ip, port)
             }
         };
-        info!("new client: {}", client_address);
+        debug!("new client: {}", client_address);
         s
     }
     fn handle_session_error(&mut self, _error: <Self::Handler as russh::server::Handler>::Error) {
@@ -109,15 +113,30 @@ impl Handler for ConnectionHandler {
     type Error = russh::Error;
     async fn auth_password(&mut self, user: &str, password: &str) -> Result<Auth, Self::Error> {
         //TODO: block certain users
+        #[cfg(feature = "test_auth")]
+        {
+            warn!("Test Authenticate: {}, {}", user, password);
+            if user == "test_user" && password == "test" {
+                warn!("Authenticate test user");
+                self.username = Some(user.to_string());
+                return Ok(Auth::Accept);
+            } else {
+                error!("Reject test user");
+                return Ok(Auth::Reject {
+                    proceed_with_methods: None,
+                    partial_success: false,
+                });
+            }
+        }
         for authenticator in &self.server.user_authenticators {
             match authenticator.authenticate(user, Credential::Password(password)) {
                 Ok(true) => {
-                    info!("login for user: {} ACCEPTED", user);
+                    debug!("login for user: {} ACCEPTED", user);
                     self.username = Some(user.to_string());
                     return Ok(Auth::Accept);
                 }
                 Ok(false) => {
-                    info!("login for user: {} FAILED ", user);
+                    debug!("login for user: {} FAILED ", user);
                 }
                 Err(e) => {
                     warn!("pam auth error: {}", e);
@@ -145,6 +164,7 @@ impl Handler for ConnectionHandler {
         data: &[u8],
         session: &mut Session,
     ) -> Result<(), Self::Error> {
+        let username = self.username.clone().expect("user not set");
         let openssh_key = String::from_utf8_lossy(data).to_string();
         let public_key = match certificat_authority::key_from_openssh(&openssh_key) {
             Err(e) => {
@@ -158,15 +178,26 @@ impl Handler for ConnectionHandler {
 
         info!(
             "user {} requested signing of key: {}",
-            self.username.as_ref().unwrap(),
-            openssh_key
+            username, openssh_key
         );
-        let cert = match self.server.ca_client.send_request(&CaRequest::SignCertificate {
-            public_key: public_key.clone(),
-            principals: vec![self.username.as_ref().unwrap().clone()],
-            valid_after: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
-            valid_before: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() + (365 * 86400),
-        }) {
+        let cert = match self
+            .server
+            .ca_client
+            .send_request(&CaRequest::SignCertificate {
+                public_key: public_key.clone(),
+                principals: vec![username.clone()],
+                valid_after: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs(),
+                valid_before: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs()
+                    + (365 * 86400),
+            })
+            .await
+        {
             Ok(CaResponse::SignedCertificate(cert)) => cert,
             Ok(CaResponse::Error(e)) => {
                 let error_message = format!("CA server error: {}", e);
@@ -209,4 +240,3 @@ impl Drop for ConnectionHandler {
         });
     }
 }
-
