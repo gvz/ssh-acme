@@ -10,8 +10,12 @@
       let
         pkgs = import nixpkgs { inherit system; };
         naersk-lib = pkgs.callPackage naersk { };
+
       in {
         defaultPackage = naersk-lib.buildPackage {
+          doCheck = true;
+          cargoTestOptions = x: x ++ [ "--features test_auth" ];
+
           src = ./.;
           buildInputs = with pkgs; [
             llvm
