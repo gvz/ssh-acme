@@ -11,6 +11,7 @@ jobs:
       - uses: cachix/install-nix-action@v26
       - name: Building package
         run: nix build
+
   integration_test:
     runs-on: ubuntu-latest
     steps:
