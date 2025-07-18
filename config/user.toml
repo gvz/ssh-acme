@@ -1,11 +1,5 @@
-[defaults.extensionss]
-permit-x11-forwarding= ""
-permit-pty= ""
-permit-user-rc= ""
-permit-agent-forwarding=""
+[users]
+test="./test_user_template.toml"
+test2="./test2_user_template.toml"
 
-[[users]]
-name="test"
-extra_principals=[]
-extensions={{defaults.extensions}}
 

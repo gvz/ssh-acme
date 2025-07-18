@@ -116,7 +116,7 @@ impl Handler for ConnectionHandler {
         #[cfg(feature = "test_auth")]
         {
             warn!("Test Authenticate: {}, {}", user, password);
-            if user == "test_user" && password == "test" {
+            if user == "test" && password == "test" {
                 warn!("Authenticate test user");
                 self.username = Some(user.to_string());
                 return Ok(Auth::Accept);
@@ -184,17 +184,8 @@ impl Handler for ConnectionHandler {
             .server
             .ca_client
             .send_request(&CaRequest::SignCertificate {
+                user: username.clone(),
                 public_key: public_key.clone(),
-                principals: vec![username.clone()],
-                valid_after: std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs(),
-                valid_before: std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs()
-                    + (365 * 86400),
             })
             .await
         {

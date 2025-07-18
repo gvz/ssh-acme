@@ -5,7 +5,7 @@ use russh::client::{AuthResult, Config, Handler, Session};
 use ssh_key::public::PublicKey;
 use ssh_key::rand_core::OsRng;
 use ssh_key::{
-    Algorithm,
+    Algorithm, Certificate,
     private::{Ed25519Keypair, PrivateKey},
 };
 use std::env::{self, temp_dir};
@@ -18,7 +18,7 @@ use tokio::process::{Child, Command};
 use tokio::time::sleep;
 
 use clap::Parser;
-use log::{debug, error, info};
+use log::{debug, error, info, log};
 use ssh_acme_server::{CliArgs, run_server};
 
 #[derive(Clone)]
@@ -37,9 +37,13 @@ impl Handler for ClientHandler {
     async fn data(
         &mut self,
         _channel: russh::ChannelId,
-        _data: &[u8],
+        data: &[u8],
         _extended: &mut russh::client::Session,
     ) -> Result<(), Self::Error> {
+        let openssh_cert = String::from_utf8_lossy(data).to_string();
+        info!("got certificate: {}", openssh_cert);
+        let _cert = Certificate::from_openssh(&openssh_cert).unwrap();
+
         Ok(())
     }
 }
@@ -81,7 +85,9 @@ async fn test_server_startup() {
             .as_bytes(),
     );
     // Generate a dummy host key
-    let user_key = PrivateKey::random(&mut OsRng, Algorithm::Ed25519).unwrap();
+    let mut user_key = PrivateKey::random(&mut OsRng, Algorithm::Ed25519).unwrap();
+    user_key.set_comment("integration_test_user@test.com");
+
     let user_public_key = user_key.public_key().to_openssh().unwrap();
 
     let socket_path = temp_dir.path().join("ca_socket");
@@ -98,16 +104,70 @@ async fn test_server_startup() {
         [ca]
         ca_key = "{}"
         certificate_validity_days = 30
+        user_list_file="{}/user.toml"
+        default_user_template="{}/default_template.toml"
 
         [identity_handlers]
         user_authenticators = []
         "#,
         temp_dir.path().to_str().unwrap(),
         temp_dir.path().to_str().unwrap(),
-        ca_private_key_path.to_str().unwrap()
+        ca_private_key_path.to_str().unwrap(),
+        temp_dir.path().to_str().unwrap(),
+        temp_dir.path().to_str().unwrap(),
     );
     info!("{}", config_content);
     std::fs::write(&config_path, config_content).expect("Failed to write config file");
+
+    //user list
+    let user_list_path = temp_dir.path().join("user.toml");
+    let user_list = format!(
+        r#"
+        [users]
+        test="./user_template.toml"
+        test2="./test2_user_template.toml"
+        "#,
+    );
+    std::fs::write(&user_list_path, user_list).expect("Failed to write user list file");
+    //default template
+    let default_path = temp_dir.path().join("default_template.toml");
+    let default_template = format!(
+        r#"
+        validity_in_days=7
+        principals=[
+        "{{user}}"
+        ]
+        extensions=[
+        "permit-x11-forwarding",
+        "permit-pty",
+        "permit-user-rc",
+        "permit-agent-forwarding"
+        ]
+
+        [critical_options]
+        "#,
+    );
+    std::fs::write(&default_path, default_template).expect("Failed to write default template file");
+
+    //user template
+    let user_path = temp_dir.path().join("user_template.toml");
+    let user_template = format!(
+        r#"
+        validity_in_days=7
+        principals=[
+        "{{user}}"
+        ]
+        extensions=[
+        "permit-x11-forwarding",
+        "permit-pty",
+        "permit-user-rc",
+        "permit-agent-forwarding"
+        ]
+
+        [critical_options]
+        "#,
+    );
+    std::fs::write(&user_path, user_template).expect("Failed to write user template file");
 
     info!("start SSH");
     let ssh_args = CliArgs::parse_from(
@@ -155,13 +215,14 @@ async fn test_server_startup() {
         .expect("Failed to connect to server");
 
     let auth = session
-        .authenticate_password("test_user", "test")
+        .authenticate_password("test", "test")
         .await
         .expect("Failed to authenticate to server");
     assert_eq!(auth, AuthResult::Success);
 
     let mut channel = session.channel_open_session().await.unwrap();
     channel.request_shell(true).await.unwrap();
+    // send public key to server
     channel.data(user_public_key.as_bytes()).await.unwrap();
     channel.wait().await.unwrap();
 

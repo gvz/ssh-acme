@@ -1,36 +1,116 @@
 use std::fs::File;
 use std::io::Read;
+use std::path::PathBuf;
 use std::time::Duration;
-use std::collections::HashMap;
+use std::{collections::HashMap, hash::Hash};
 
 use anyhow::Result;
-use serde::Deserialize;
+use duration_str::parse as parse_duration;
+use log::error;
+use minijinja::{Environment, context};
+use serde::{Deserialize, Deserializer};
 use toml;
+
+use crate::certificat_authority::config;
 
 #[derive(Deserialize, Debug)]
 pub struct UserDefaults {
-    pub validity: Duration,
+    pub validity_in_days: u16,
     pub principals: Vec<String>,
     pub extensions: Vec<String>,
     pub critical_options: HashMap<String, String>,
 }
+#[derive(Deserialize, Debug)]
+struct UserList {
+    pub users: HashMap<String, PathBuf>,
+}
 
-pub fn read_user_defaults(file_path: &str) -> Result<UserDefaults> {
-    let mut config_file = File::open(file_path)?;
-    let mut config_text = String::new();
-    let _ = config_file.read_to_string(&mut config_text)?;
+pub fn read_user_defaults(user: &str, config: &config::Ca) -> Result<UserDefaults> {
+    let mut user_list_file = File::open(config.user_list_file.clone()).map_err(|e| {
+        error!(
+            "failed to open user list, {:?}: {}",
+            &config.user_list_file, e
+        );
+        e
+    })?;
+    let mut user_list = String::new();
+    let _ = user_list_file.read_to_string(&mut user_list).map_err(|e| {
+        error!(
+            "failed to read user list, {:?}: {}",
+            &config.user_list_file, e
+        );
+        e
+    })?;
+    let user_file_map: UserList = toml::from_str(&user_list).map_err(|e| {
+        error!("failed to parse user list form toml: {}", e);
+        e
+    })?;
 
-    let config: UserDefaults = toml::from_str(&config_text)?;
+    // use specified config for user or defaut if user has no defaults defined
+    let template_path = match user_file_map.users.get(user) {
+        Some(path) => {
+            println!("{:?}", path);
+            if path.is_relative() {
+                let user_file_path = config.user_list_file.to_path_buf();
+                let mut template_path = match user_file_path.parent() {
+                    None => panic!("user list file does not have parent: {:?}", user_file_path),
+                    Some(path) => path,
+                };
+                template_path.join(path)
+            } else {
+                path.to_path_buf()
+            }
+        }
+        None => config.default_user_template.clone(),
+    };
 
-    Ok(config)
+    let mut template_file = File::open(&template_path).map_err(|e| {
+        error!("failed to open user template, {:?}: {}", &template_path, e);
+        e
+    })?;
+    let mut template_text = String::new();
+    let _ = template_file
+        .read_to_string(&mut template_text)
+        .map_err(|e| {
+            error!("failed to read user template, {:?}: {}", &template_path, e);
+            e
+        })?;
+    let mut jinja_env = Environment::new();
+    jinja_env.add_template(user, &template_text)?;
+    let user_template = jinja_env.get_template(user)?;
+    let user_defaults = user_template.render(context!(user_name=> user))?;
+
+    let template: UserDefaults = toml::from_str(&user_defaults)?;
+
+    Ok(template)
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
+    use ssh_key::Algorithm;
+    use ssh_key::private::PrivateKey;
+    use ssh_key::rand_core::OsRng;
+    use std::{
+        io::Write,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+    use tempfile::NamedTempFile;
+
     #[test]
     fn read_user_defaults_test() {
-        let config = read_user_defaults("./config/user_default.toml").unwrap();
-        println!("{:?}", config.validity);
+        let ca_key = PrivateKey::random(&mut OsRng, Algorithm::Ed25519).unwrap();
+        let ca_key_openssh = ca_key.to_openssh(ssh_key::LineEnding::LF).unwrap();
+        let mut ca_key_file = NamedTempFile::new().unwrap();
+        ca_key_file.write_all(ca_key_openssh.as_bytes());
+        ca_key_file.flush();
+        let ca_key_path = ca_key_file.path();
+        let ca_config = config::Ca {
+            user_list_file: PathBuf::from("./config/user.toml"),
+            default_user_template: PathBuf::from("./config/user_default.toml"),
+            ca_key: ca_key_path.to_path_buf(),
+        };
+        let config = read_user_defaults("test", &ca_config).unwrap();
+        println!("{:?}", config.validity_in_days);
     }
 }

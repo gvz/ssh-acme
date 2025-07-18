@@ -49,9 +49,39 @@ pub fn read_config(file_path: &str) -> Result<Config> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use std::io::Write;
+    use tempfile::tempdir;
+
     #[test]
     fn read_config_test() {
-        let config = read_config("./config/config.toml").unwrap();
+        let dir = tempdir().unwrap();
+        let key_path = dir.path().join("test_key");
+        let mut key_file = File::create(&key_path).unwrap();
+        key_file.write_all(b"test key data").unwrap();
+
+        let config_path = dir.path().join("config.toml");
+        let mut config_file = File::create(&config_path).unwrap();
+        let config_content = format!(
+            r#"
+[ssh]
+bind = "127.0.0.1"
+port = 2222
+private_key = "/etc/ssh/ssh_host_ed25519_key"
+
+[ca]
+ca_key = "{}"
+certificate_validity_days = 30
+user_list_file="../test_data/test_key"
+default_user_template="../test_data/test_key"
+
+[identity_handlers]
+user_authenticators = ["pam"]
+"#,
+            key_path.to_str().unwrap()
+        );
+        config_file.write_all(config_content.as_bytes()).unwrap();
+
+        let config = read_config(config_path.to_str().unwrap()).unwrap();
         println!("config: {:?}", config);
     }
 }

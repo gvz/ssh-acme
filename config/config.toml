@@ -5,6 +5,9 @@ private_key="/etc/ssh/ssh_host_ed25519_key"
 
 [ca]
 ca_key="../test_data/test_key"
+user_list_file="../test_data/test_key"
+default_user_template="../test_data/test_key"
+
 
 [identity_handlers]
 user_authenticators=[

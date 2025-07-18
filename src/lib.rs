@@ -55,7 +55,7 @@ pub async fn run_server(args: CliArgs) {
                 Some(path) => path,
                 None => panic!("in CA mode the socket path in mandatory"),
             };
-            let ca = CertificateAuthority::new(&config.ca.ca_key).unwrap();
+            let ca = CertificateAuthority::new(&config.ca).unwrap();
             let ca_server = CaServer::new(socket_path, ca);
             ca_server.run().await.unwrap();
         }
