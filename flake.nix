@@ -15,7 +15,6 @@
         defaultPackage = naersk-lib.buildPackage {
           doCheck = true;
           cargoTestOptions = x: x ++ [ "--features test_auth" ];
-
           src = ./.;
           buildInputs = with pkgs; [
             llvm

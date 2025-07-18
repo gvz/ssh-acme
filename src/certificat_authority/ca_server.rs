@@ -63,18 +63,8 @@ impl CaServer {
 
     fn handle_request(&self, request: CaRequest) -> Result<CaResponse> {
         match request {
-            CaRequest::SignCertificate {
-                public_key,
-                principals,
-                valid_before,
-                valid_after,
-            } => {
-                let signed_cert = self.ca.sign_certificate(
-                    &public_key,
-                    &principals,
-                    valid_after,
-                    valid_before,
-                )?;
+            CaRequest::SignCertificate { user, public_key } => {
+                let signed_cert = self.ca.sign_certificate(&user, &public_key)?;
                 Ok(CaResponse::SignedCertificate(signed_cert))
             }
         }

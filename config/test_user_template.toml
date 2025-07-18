@@ -1,6 +1,6 @@
 validity_in_days=7
 principals=[
-  "{{user}}"
+"{{user_name}}"
 ]
 extensions=[
     "permit-x11-forwarding",
@@ -10,6 +10,4 @@ extensions=[
 ]
 
 [critical_options]
-
-
-
+test="ff"
