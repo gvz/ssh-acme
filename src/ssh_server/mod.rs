@@ -1,3 +1,10 @@
+//! # SSH ACME Server
+//!
+//! This module provides the core SSH server implementation.
+//! It handles client connections, authentication, and the process of
+//! receiving a public key, forwarding it to the CA for signing, and
+//! returning the signed certificate to the user.
+
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -16,6 +23,10 @@ use crate::identiy_handlers::{Credential, UserAuthenticator};
 pub(crate) mod config;
 use config::SshServerConfig;
 
+/// The main SSH ACME server struct.
+///
+/// This struct holds the state for the SSH server, including connected clients,
+/// the CA client, the server configuration, and the list of user authenticators.
 #[derive(Clone)]
 pub struct SshAcmeServer {
     clients: Arc<Mutex<HashMap<usize, (ChannelId, russh::server::Handle)>>>,
@@ -24,6 +35,12 @@ pub struct SshAcmeServer {
     config: SshServerConfig,
     user_authenticators: Vec<Box<dyn UserAuthenticator + Send + Sync>>,
 }
+
+/// A handler for a single client connection.
+///
+/// This struct holds the state for a single client connection, including a
+/// reference to the main server, the username (once authenticated), and a
+/// unique ID for the connection.
 pub struct ConnectionHandler {
     server: Arc<SshAcmeServer>,
     username: Option<String>,
@@ -31,6 +48,13 @@ pub struct ConnectionHandler {
 }
 
 impl SshAcmeServer {
+    /// Creates a new `SshAcmeServer`.
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - The SSH server configuration.
+    /// * `ca_client` - A client for communicating with the CA server.
+    /// * `user_authenticators` - A list of authenticators to use for user authentication.
     pub fn new(
         config: SshServerConfig,
         ca_client: CaClient,
@@ -44,6 +68,11 @@ impl SshAcmeServer {
             user_authenticators,
         }
     }
+
+    /// Runs the SSH server.
+    ///
+    /// This function loads the server's private key, configures the SSH server,
+    /// and starts listening for incoming connections.
     pub async fn run(&mut self) {
         let server_private_key_path = PathBuf::from(&self.config.private_key);
         let server_private_key = russh::keys::load_secret_key(&server_private_key_path, None)
@@ -85,6 +114,8 @@ impl SshAcmeServer {
 
 impl Server for SshAcmeServer {
     type Handler = ConnectionHandler;
+
+    /// Creates a new `ConnectionHandler` for a new client connection.
     fn new_client(&mut self, socket_addr: Option<std::net::SocketAddr>) -> ConnectionHandler {
         self.client_ids += 1;
         let s = ConnectionHandler {
@@ -104,6 +135,8 @@ impl Server for SshAcmeServer {
         debug!("new client: {}", client_address);
         s
     }
+
+    /// Handles a session error.
     fn handle_session_error(&mut self, _error: <Self::Handler as russh::server::Handler>::Error) {
         error!("Session error: {:#?}", _error);
     }
@@ -111,6 +144,11 @@ impl Server for SshAcmeServer {
 
 impl Handler for ConnectionHandler {
     type Error = russh::Error;
+
+    /// Authenticates a user with a password.
+    ///
+    /// This function iterates through the enabled authenticators and tries to
+    /// authenticate the user with the given password.
     async fn auth_password(&mut self, user: &str, password: &str) -> Result<Auth, Self::Error> {
         //TODO: block certain users
         #[cfg(feature = "test_auth")]
@@ -146,6 +184,7 @@ impl Handler for ConnectionHandler {
         Err(russh::Error::RequestDenied)
     }
 
+    /// Handles a new session channel.
     async fn channel_open_session(
         &mut self,
         channel: Channel<Msg>,
@@ -158,6 +197,10 @@ impl Handler for ConnectionHandler {
         Ok(true)
     }
 
+    /// Handles incoming data on a channel.
+    ///
+    /// This function receives the user's public key, sends it to the CA for signing,
+    /// and returns the signed certificate to the user.
     async fn data(
         &mut self,
         channel: ChannelId,
@@ -222,6 +265,7 @@ impl Handler for ConnectionHandler {
 }
 
 impl Drop for ConnectionHandler {
+    /// Removes the client from the server's list of clients when the connection is dropped.
     fn drop(&mut self) {
         let id = self.id;
         let clients = self.server.clients.clone();

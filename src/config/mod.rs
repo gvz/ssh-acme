@@ -1,27 +1,51 @@
+//! # Configuration
+//!
+//! This module handles the reading and parsing of the main configuration file.
 use std::fs::File;
 use std::io::{self, Read};
 use std::path::PathBuf;
 
 use anyhow::Result;
 use serde::Deserialize;
-use toml;
 
 use crate::certificat_authority::config::Ca;
 use crate::identiy_handlers::IndentityHanderConfig;
 use crate::ssh_server::config::SshServerConfig;
 
+/// The main configuration for the SSH ACME server.
 #[derive(Deserialize, Debug)]
 pub struct Config {
+    /// The SSH server configuration.
     pub ssh: SshServerConfig,
+    /// The Certificate Authority (CA) configuration.
     pub ca: Ca,
+    /// The identity handler configuration.
     pub identity_handlers: IndentityHanderConfig,
 }
 
+/// A trait for inserting the configuration root path into a configuration struct.
+///
+/// This is used to resolve relative paths in the configuration.
 pub(crate) trait InsertConfigRoot {
+    /// Inserts the configuration root path into the configuration struct.
+    ///
+    /// # Arguments
+    ///
+    /// * `config_root` - The root path of the configuration file.
     fn insert_config_path(&mut self, config_root: &PathBuf) -> Result<()>;
+    /// Checks if the paths in the configuration are valid.
     fn check_paths(&self) -> Result<()>;
 }
 
+/// Reads and parses the main configuration file.
+///
+/// # Arguments
+///
+/// * `file_path` - The path to the configuration file.
+///
+/// # Returns
+///
+/// A `Result` containing the parsed `Config` or an error.
 pub fn read_config(file_path: &str) -> Result<Config> {
     let config_path: PathBuf = PathBuf::from(file_path);
     let config_root = match config_path.exists() {

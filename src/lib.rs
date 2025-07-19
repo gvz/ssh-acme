@@ -1,3 +1,9 @@
+//! # SSH ACME Server
+//!
+//! This crate provides the core functionality for the SSH ACME server.
+//! It includes the main server logic, command-line argument parsing,
+//! and the coordination between the SSH server and the Certificate Authority (CA).
+
 use clap::{Parser, Subcommand};
 use log::{error, info};
 use std::env;
@@ -15,23 +21,32 @@ use crate::certificat_authority::{CertificateAuthority, ca_client::CaClient, ca_
 
 mod config;
 
+/// Command-line arguments for the SSH ACME server.
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 pub struct CliArgs {
-    /// config file path
+    /// The path to the configuration file.
     #[arg(short = 'c', long)]
     config_file: String,
-    /// CA mode
+    /// Run in Certificate Authority (CA) mode.
     #[arg(short = 'a', long, default_value_t = false)]
     certificate_authority: bool,
-    /// socket path
+    /// The path to the Unix socket for CA communication.
     #[arg(short = 's', long)]
     socket_path: Option<String>,
-    /// do not start CA
+    /// Disable the automatic startup of the CA server.
     #[arg(long, default_value_t = false)]
     disable_ca: bool,
 }
 
+/// Runs the SSH ACME server.
+///
+/// This function initializes the logger, reads the configuration, and starts
+/// either the CA server or the SSH server based on the command-line arguments.
+///
+/// # Arguments
+///
+/// * `args` - The command-line arguments parsed by `clap`.
 pub async fn run_server(args: CliArgs) {
     if env::var("RUST_LOG").is_err() {
         unsafe {
