@@ -1,22 +1,35 @@
-//use std::os::unix::net::UnixListener;
+//! # CA Server
+//!
+//! This module provides a server for the Certificate Authority (CA) that listens for requests
+//! on a Unix socket. It handles requests for signing SSH certificates.
 use anyhow::Result;
 use log::{debug, error, info};
 use std::fs;
-use std::io::{Read, Write};
 use tokio::net::UnixListener;
 
 use super::{CaRequest, CaResponse, CertificateAuthority};
 
+/// A server for the Certificate Authority.
 pub struct CaServer {
     socket_path: String,
     ca: CertificateAuthority,
 }
 
 impl CaServer {
+    /// Creates a new `CaServer`.
+    ///
+    /// # Arguments
+    ///
+    /// * `socket_path` - The path to the Unix socket to listen on.
+    /// * `ca` - The `CertificateAuthority` instance to use for signing certificates.
     pub fn new(socket_path: String, ca: CertificateAuthority) -> Self {
         CaServer { socket_path, ca }
     }
 
+    /// Runs the CA server.
+    ///
+    /// This function binds to the specified Unix socket and enters a loop to accept
+    /// and handle incoming connections.
     pub async fn run(&self) -> Result<()> {
         // Clean up old socket if it exists
         if fs::metadata(&self.socket_path).is_ok() {

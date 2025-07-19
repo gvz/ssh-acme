@@ -1,3 +1,7 @@
+//! # Certificate Authority
+//!
+//! This module provides the core functionality for the Certificate Authority (CA).
+//! It is responsible for signing SSH certificates based on user requests.
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -7,16 +11,17 @@ use log::{debug, error, info};
 use serde::{Deserialize, Serialize};
 use ssh_key::rand_core::OsRng;
 use ssh_key::{
-    PublicKey,
     certificate::{Builder as CertBuilder, CertType, Certificate},
     private::PrivateKey,
+    PublicKey,
 };
 
-pub mod config;
 pub mod ca_client;
 pub mod ca_server;
+pub mod config;
 mod user_defaults_reader;
 
+/// Represents the Certificate Authority.
 #[derive(Clone)]
 pub struct CertificateAuthority {
     private_key: PrivateKey,
@@ -24,6 +29,15 @@ pub struct CertificateAuthority {
 }
 
 impl CertificateAuthority {
+    /// Creates a new `CertificateAuthority` instance.
+    ///
+    /// # Arguments
+    ///
+    /// * `ca_config` - The configuration for the CA.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the new `CertificateAuthority` instance or an error.
     pub fn new(ca_config: &config::Ca) -> Result<Self> {
         let mut key_file = File::open(ca_config.ca_key.clone())?;
         let mut key_buffer: Vec<u8> = Vec::new();
@@ -36,6 +50,16 @@ impl CertificateAuthority {
         })
     }
 
+    /// Signs an SSH public key and returns a certificate.
+    ///
+    /// # Arguments
+    ///
+    /// * `user` - The username associated with the public key.
+    /// * `public_key` - The public key to be signed.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the signed `Certificate` or an error.
     pub fn sign_certificate(&self, user: &str, public_key: &PublicKey) -> Result<Certificate> {
         // Initialize certificate builder
         info!(
@@ -82,18 +106,32 @@ impl CertificateAuthority {
     }
 }
 
+/// Parses an OpenSSH public key string into a `PublicKey` object.
+///
+/// # Arguments
+///
+/// * `openssh_key` - The OpenSSH public key string.
+///
+/// # Returns
+///
+/// A `Result` containing the `PublicKey` or an error.
 pub fn key_from_openssh(openssh_key: &str) -> Result<PublicKey> {
     Ok(PublicKey::from_openssh(openssh_key)?)
 }
 
+/// Represents a request to the Certificate Authority.
 #[derive(Serialize, Deserialize, Debug)]
 pub enum CaRequest {
+    /// A request to sign a certificate.
     SignCertificate { user: String, public_key: PublicKey },
 }
 
+/// Represents a response from the Certificate Authority.
 #[derive(Serialize, Deserialize, Debug)]
 pub enum CaResponse {
+    /// A successfully signed certificate.
     SignedCertificate(Certificate),
+    /// An error that occurred during processing.
     Error(String),
 }
 

@@ -1,23 +1,30 @@
+//! # User Defaults Reader
+//!
+//! This module is responsible for reading and parsing user-specific certificate templates.
+//! It uses a combination of TOML and Jinja2 templates to allow for dynamic generation
+//! of certificate parameters based on the user.
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
-use std::time::Duration;
-use std::{collections::HashMap, hash::Hash};
 
 use anyhow::Result;
-use duration_str::parse as parse_duration;
 use log::error;
 use minijinja::{Environment, context};
-use serde::{Deserialize, Deserializer};
-use toml;
+use serde::Deserialize;
 
 use crate::certificat_authority::config;
 
+/// Represents the user-specific certificate parameters.
 #[derive(Deserialize, Debug)]
 pub struct UserDefaults {
+    /// The validity period of the certificate in days.
     pub validity_in_days: u16,
+    /// A list of principals (e.g., usernames) to be included in the certificate.
     pub principals: Vec<String>,
+    /// A list of extensions to be included in the certificate.
     pub extensions: Vec<String>,
+    /// A map of critical options to be included in the certificate.
     pub critical_options: HashMap<String, String>,
 }
 #[derive(Deserialize, Debug)]
@@ -25,6 +32,21 @@ struct UserList {
     pub users: HashMap<String, PathBuf>,
 }
 
+/// Reads and parses the user-specific certificate template for a given user.
+///
+/// It first reads the user list file to find the template for the specified user.
+/// If no specific template is found, it uses the default template.
+/// It then uses Jinja2 to render the template with the username and parses the
+/// result as a `UserDefaults` struct.
+///
+/// # Arguments
+///
+/// * `user` - The username for which to read the defaults.
+/// * `config` - The CA configuration containing the paths to the user list and default template.
+///
+/// # Returns
+///
+/// A `Result` containing the `UserDefaults` for the user or an error.
 pub fn read_user_defaults(user: &str, config: &config::Ca) -> Result<UserDefaults> {
     let mut user_list_file = File::open(config.user_list_file.clone()).map_err(|e| {
         error!(
@@ -52,7 +74,7 @@ pub fn read_user_defaults(user: &str, config: &config::Ca) -> Result<UserDefault
             println!("{:?}", path);
             if path.is_relative() {
                 let user_file_path = config.user_list_file.to_path_buf();
-                let mut template_path = match user_file_path.parent() {
+                let template_path = match user_file_path.parent() {
                     None => panic!("user list file does not have parent: {:?}", user_file_path),
                     Some(path) => path,
                 };
@@ -78,7 +100,7 @@ pub fn read_user_defaults(user: &str, config: &config::Ca) -> Result<UserDefault
     let mut jinja_env = Environment::new();
     jinja_env.add_template(user, &template_text)?;
     let user_template = jinja_env.get_template(user)?;
-    let user_defaults = user_template.render(context!(user_name=> user))?;
+    let user_defaults = user_template.render(context!(user_name => user))?;
 
     let template: UserDefaults = toml::from_str(&user_defaults)?;
 

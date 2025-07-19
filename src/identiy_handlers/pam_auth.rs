@@ -4,6 +4,7 @@ use pam::Client;
 
 use crate::identiy_handlers::{Credential, Error, UserAuthenticator, credentinal_type_name};
 
+/// A `UserAuthenticator` that uses PAM to authenticate users.
 #[derive(Clone)]
 pub(super) struct PamAuthenticator {}
 impl UserAuthenticator for PamAuthenticator {
@@ -22,6 +23,16 @@ impl UserAuthenticator for PamAuthenticator {
     }
 }
 
+/// Authenticates a user using PAM.
+///
+/// # Arguments
+///
+/// * `user` - The username to authenticate.
+/// * `password` - The password to use for authentication.
+///
+/// # Returns
+///
+/// A `Result` containing `true` if the user is authenticated, `false` otherwise, or an error.
 pub fn pam_authenticate_user(user: &str, password: &str) -> Result<bool> {
     let forbidden_users = vec!["root"];
     for bad_user in forbidden_users {
