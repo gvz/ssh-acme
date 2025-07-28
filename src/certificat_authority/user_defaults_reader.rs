@@ -24,8 +24,7 @@ pub struct UserDefaults {
     pub principals: Vec<String>,
     /// A list of extensions to be included in the certificate.
     pub extensions: Vec<String>,
-    /// A map of critical options to be included in the certificate.
-    pub critical_options: HashMap<String, String>,
+    
 }
 #[derive(Deserialize, Debug)]
 struct UserList {
@@ -131,6 +130,7 @@ mod test {
             user_list_file: PathBuf::from("./config/user.toml"),
             default_user_template: PathBuf::from("./config/user_default.toml"),
             ca_key: ca_key_path.to_path_buf(),
+            host_cert_template: PathBuf::from("./config/host_cert_template.toml"),
         };
         let config = read_user_defaults("test", &ca_config).unwrap();
         println!("{:?}", config.validity_in_days);

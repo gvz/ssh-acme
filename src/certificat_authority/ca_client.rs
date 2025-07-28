@@ -3,7 +3,7 @@
 //! This module provides a client for interacting with the Certificate Authority (CA) server
 //! over a Unix socket.
 use anyhow::Result;
-use log::{debug, info};
+use log::debug;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixStream;
 
