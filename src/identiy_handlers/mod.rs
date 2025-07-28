@@ -4,7 +4,7 @@
 //! It defines the `UserAuthenticator` trait, which can be implemented by different
 //! authentication methods (e.g., PAM).
 use anyhow::Result;
-use ssh_key::PublicKey;
+
 
 use log::error;
 use serde::Deserialize;
@@ -25,9 +25,7 @@ pub(crate) enum Error {
     /// The user is forbidden from logging in.
     #[error("user {0} is forbidden from logging in")]
     ForbiddenUser(String),
-    /// The credential type is not supported by the authenticator.
-    #[error("Credential type {0} not supported by {1}")]
-    CredentialNotSupported(String, String),
+    
 }
 
 /// A credential used for authentication.
@@ -35,16 +33,9 @@ pub(crate) enum Error {
 pub(crate) enum Credential<'a> {
     /// A password credential.
     Password(&'a str),
-    /// A public key credential.
-    PublicKey(&'a PublicKey),
 }
 
-fn credentinal_type_name(credential: Credential) -> &str {
-    match credential {
-        Credential::Password(_) => "Password",
-        Credential::PublicKey(_) => "PublicKey",
-    }
-}
+
 
 /// A trait for authenticating users.
 pub(crate) trait UserAuthenticator: Send + Sync {

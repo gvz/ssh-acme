@@ -4,7 +4,7 @@
 //! It includes the main server logic, command-line argument parsing,
 //! and the coordination between the SSH server and the Certificate Authority (CA).
 
-use clap::{Parser, Subcommand};
+use clap::Parser;
 use log::{error, info};
 use std::env;
 use std::fs;
@@ -17,7 +17,7 @@ use crate::ssh_server::SshAcmeServer;
 mod identiy_handlers;
 
 mod certificat_authority;
-use crate::certificat_authority::{CertificateAuthority, ca_client::CaClient, ca_server::CaServer};
+use crate::certificat_authority::{CertificateAuthority, ca_client::CaClient, ca_server::CaServer, config::Ca as CaConfig};
 
 mod config;
 
@@ -88,9 +88,9 @@ pub async fn run_server(args: CliArgs) {
                     path.to_string()
                 }
             };
-            let mut ca_process = if !args.disable_ca {
+            let ca_process = if !args.disable_ca {
                 info!("spawning CA");
-                let mut ca_process = match Command::new(env::current_exe().unwrap())
+                let ca_process = match Command::new(env::current_exe().unwrap())
                     .arg("-c")
                     .arg(&args.config_file)
                     .arg("-a")

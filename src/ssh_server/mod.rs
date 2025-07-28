@@ -17,10 +17,13 @@ use russh::{
 };
 use tokio::sync::Mutex;
 
-use crate::certificat_authority::{self, CaRequest, CaResponse, ca_client::CaClient};
+use crate::certificat_authority::key_from_openssh;
+use crate::certificat_authority::{CaRequest, CaResponse, ca_client::CaClient};
 use crate::identiy_handlers::{Credential, UserAuthenticator};
 
 pub(crate) mod config;
+pub(crate) mod host_key_signer;
+pub(crate) mod user_key_signer;
 use config::SshServerConfig;
 
 /// The main SSH ACME server struct.
@@ -41,10 +44,16 @@ pub struct SshAcmeServer {
 /// This struct holds the state for a single client connection, including a
 /// reference to the main server, the username (once authenticated), and a
 /// unique ID for the connection.
+pub enum AuthMethod {
+    Password,
+    PublicKey,
+}
+
 pub struct ConnectionHandler {
     server: Arc<SshAcmeServer>,
     username: Option<String>,
     id: usize,
+    auth_method: Option<AuthMethod>,
 }
 
 impl SshAcmeServer {
@@ -85,9 +94,9 @@ impl SshAcmeServer {
             &server_private_key_path.to_str().unwrap()
         );
 
-        // allow password authentication only
         let mut auth_methods = russh::MethodSet::empty();
         auth_methods.push(russh::MethodKind::Password);
+        auth_methods.push(russh::MethodKind::PublicKey);
 
         let ssh_config = russh::server::Config {
             inactivity_timeout: Some(std::time::Duration::from_secs(3600)),
@@ -122,6 +131,7 @@ impl Server for SshAcmeServer {
             id: self.client_ids,
             username: None,
             server: Arc::new(self.clone()),
+            auth_method: None,
         };
 
         let client_address = match socket_addr {
@@ -157,6 +167,7 @@ impl Handler for ConnectionHandler {
             if user == "test" && password == "test" {
                 warn!("Authenticate test user");
                 self.username = Some(user.to_string());
+                self.auth_method = Some(AuthMethod::Password);
                 return Ok(Auth::Accept);
             } else {
                 error!("Reject test user");
@@ -171,6 +182,7 @@ impl Handler for ConnectionHandler {
                 Ok(true) => {
                     debug!("login for user: {} ACCEPTED", user);
                     self.username = Some(user.to_string());
+                    self.auth_method = Some(AuthMethod::Password);
                     return Ok(Auth::Accept);
                 }
                 Ok(false) => {
@@ -182,6 +194,19 @@ impl Handler for ConnectionHandler {
             }
         }
         Err(russh::Error::RequestDenied)
+    }
+
+    async fn auth_publickey(
+        &mut self,
+        user: &str,
+        _public_key: &russh::keys::PublicKey,
+    ) -> Result<Auth, Self::Error> {
+        // Accept any user for public key authentication
+        info!("Public key authentication accepted for user/host: {}", user);
+        // TODO: build host authentication
+        self.username = Some(user.to_string());
+        self.auth_method = Some(AuthMethod::PublicKey);
+        Ok(Auth::Accept)
     }
 
     /// Handles a new session channel.
@@ -197,70 +222,38 @@ impl Handler for ConnectionHandler {
         Ok(true)
     }
 
-    /// Handles incoming data on a channel.
-    ///
-    /// This function receives the user's public key, sends it to the CA for signing,
-    /// and returns the signed certificate to the user.
     async fn data(
         &mut self,
         channel: ChannelId,
         data: &[u8],
         session: &mut Session,
+    ) -> std::result::Result<(), Self::Error> {
+        user_key_signer::handler_sign_user_key(self, channel, data, session).await
+    }
+
+    async fn exec_request(
+        &mut self,
+        channel: ChannelId,
+        data: &[u8],
+        session: &mut Session,
     ) -> Result<(), Self::Error> {
-        let username = self.username.clone().expect("user not set");
-        let openssh_key = String::from_utf8_lossy(data).to_string();
-        let public_key = match certificat_authority::key_from_openssh(&openssh_key) {
-            Err(e) => {
-                let error_message = format!("failed to read openssh public key: {}", e);
-                error!("{}", &error_message);
-                let _ = session.disconnect(russh::Disconnect::ByApplication, &error_message, "en");
-                return Ok(());
-            }
-            Ok(key) => key,
-        };
+        let command = String::from_utf8_lossy(data);
+        let mut parts = command.split_whitespace();
+        let command_name = parts.next().unwrap_or("");
+        let args: Vec<&str> = parts.collect();
 
-        info!(
-            "user {} requested signing of key: {}",
-            username, openssh_key
-        );
-        let cert = match self
-            .server
-            .ca_client
-            .send_request(&CaRequest::SignCertificate {
-                user: username.clone(),
-                public_key: public_key.clone(),
-            })
-            .await
-        {
-            Ok(CaResponse::SignedCertificate(cert)) => cert,
-            Ok(CaResponse::Error(e)) => {
-                let error_message = format!("CA server error: {}", e);
+        match command_name {
+            "sign_host_key" => {
+                debug!("found host key signing command");
+                host_key_signer::handle_sign_host_key(self, channel, args, session).await
+            }
+            _ => {
+                let error_message = format!("Unknown command: {}", command_name);
                 error!("{}", &error_message);
                 let _ = session.disconnect(russh::Disconnect::ByApplication, &error_message, "en");
-                return Ok(());
+                Ok(())
             }
-            Err(e) => {
-                let error_message = format!("Failed to send request to CA server: {}", e);
-                error!("{}", &error_message);
-                let _ = session.disconnect(russh::Disconnect::ByApplication, &error_message, "en");
-                return Ok(());
-            }
-        };
-        let openssh_cert = match cert.to_openssh() {
-            Ok(cert) => cert,
-            Err(e) => {
-                let error_message = format!("failed to concert cert to openssh format : {}", e);
-                error!("{}", &error_message);
-                let _ = session.disconnect(russh::Disconnect::ByApplication, &error_message, "en");
-                return Ok(());
-            }
-        };
-
-        //send data back and close connection
-        let _ = session.data(channel, openssh_cert.into());
-        let _ = session.eof(channel);
-        let _ = session.close(channel);
-        Ok(())
+        }
     }
 }
 

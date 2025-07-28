@@ -2,7 +2,7 @@ use anyhow::Result;
 use log::warn;
 use pam::Client;
 
-use crate::identiy_handlers::{Credential, Error, UserAuthenticator, credentinal_type_name};
+use crate::identiy_handlers::{Credential, Error, UserAuthenticator};
 
 /// A `UserAuthenticator` that uses PAM to authenticate users.
 #[derive(Clone)]
@@ -11,11 +11,6 @@ impl UserAuthenticator for PamAuthenticator {
     fn authenticate(&self, username: &str, credential: Credential) -> Result<bool> {
         match credential {
             Credential::Password(password) => pam_authenticate_user(username, password),
-            other => Err(Error::CredentialNotSupported(
-                credentinal_type_name(other).to_string(),
-                "PamAuthenticator".to_string(),
-            )
-            .into()),
         }
     }
     fn clone_box(&self) -> Box<dyn UserAuthenticator + Send + Sync> {
