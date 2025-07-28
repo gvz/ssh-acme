@@ -78,6 +78,27 @@ The main configuration file is `config/config.toml`. It defines:
 
 User-specific certificate templates are defined in TOML files and can use Jinja2 templating for dynamic values.
 
+## Internals
+### User Certification 
+1. A user logs into the project's ssh server via username and password
+2. the ssh server checks whether the user can authenticatate against one of the enabled identity handlers
+  1. if no identity handler accepts the user, the connection is closed. 
+  2. if one identity handler is accepted, the ssh server reads the public key form stdin
+3. the ssh server wraps the public key into a certificate request which is sent to the certificat authority (CA)
+4. the CA receives the certificate request depending to the user_certificate_defaults configuration if generates the certificate and signs it
+5. the certificate is sent to the ssh server
+6. the ssh server sends the certificate to the user
+### Host Certification 
+1. A host logs into the project's ssh server via hostname and the host's public key 
+2. To validate the public key, the ssh server tries to connects as a ssh client the provided hostname on port 22 and checks whether the same public key is provided. 
+  1. if the another public key is provided the signing process is aborted an all ssh connection are closed
+  2. if the same public key is provided the signing process continues
+     this is a proove of concet and needs to be improoved.
+3. the ssh server wraps the public key into a certificate request which is sent to the certificat authority (CA)
+4. the CA receives the certificate request depending to the host_certificate_defaults configuration if generates the certificate and signs it
+5. the certificate is sent to the ssh server
+6. the ssh server sends the certificate to the host
+
 ## Contributing
 
 Contributions are welcome! Please feel free to open issues or submit pull requests.
