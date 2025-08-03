@@ -18,7 +18,6 @@ use ssh_key::{
 pub mod ca_client;
 pub mod ca_server;
 pub mod config;
-pub mod host_ca;
 mod host_defaults_reader;
 mod user_defaults_reader;
 
@@ -202,17 +201,11 @@ pub enum CaResponse {
 #[cfg(test)]
 mod test {
     use super::*;
+    use std::io::Write;
     use std::path::PathBuf;
-    use std::{
-        io::Write,
-        time::{SystemTime, UNIX_EPOCH},
-    };
 
-    use ssh_key::{
-        Algorithm,
-        private::{Ed25519Keypair, PrivateKey},
-    };
-    use tempfile::{NamedTempFile, tempfile};
+    use ssh_key::{Algorithm, private::PrivateKey};
+    use tempfile::NamedTempFile;
 
     #[test]
     fn sign_certificate() {
@@ -222,8 +215,8 @@ mod test {
         let ca_key = PrivateKey::random(&mut OsRng, Algorithm::Ed25519).unwrap();
         let ca_key_openssh = ca_key.to_openssh(ssh_key::LineEnding::LF).unwrap();
         let mut ca_key_file = NamedTempFile::new().unwrap();
-        ca_key_file.write_all(ca_key_openssh.as_bytes());
-        ca_key_file.flush();
+        ca_key_file.write_all(ca_key_openssh.as_bytes()).unwrap();
+        ca_key_file.flush().unwrap();
         let ca_key_path = ca_key_file.path();
 
         // Generate a "subject" key to be signed by the certificate authority.
@@ -243,12 +236,6 @@ mod test {
             private_key: ca_key,
             config: ca_config,
         };
-
-        let valid_after = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-        let valid_before = valid_after + (365 * 86400); // e.g. 1 year
 
         let cert = authority
             .sign_certificate("test", subject_public_key)

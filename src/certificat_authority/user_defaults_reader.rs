@@ -24,7 +24,6 @@ pub struct UserDefaults {
     pub principals: Vec<String>,
     /// A list of extensions to be included in the certificate.
     pub extensions: Vec<String>,
-    
 }
 #[derive(Deserialize, Debug)]
 struct UserList {
@@ -112,10 +111,7 @@ mod test {
     use ssh_key::Algorithm;
     use ssh_key::private::PrivateKey;
     use ssh_key::rand_core::OsRng;
-    use std::{
-        io::Write,
-        time::{SystemTime, UNIX_EPOCH},
-    };
+    use std::io::Write;
     use tempfile::NamedTempFile;
 
     #[test]
@@ -123,8 +119,8 @@ mod test {
         let ca_key = PrivateKey::random(&mut OsRng, Algorithm::Ed25519).unwrap();
         let ca_key_openssh = ca_key.to_openssh(ssh_key::LineEnding::LF).unwrap();
         let mut ca_key_file = NamedTempFile::new().unwrap();
-        ca_key_file.write_all(ca_key_openssh.as_bytes());
-        ca_key_file.flush();
+        ca_key_file.write_all(ca_key_openssh.as_bytes()).unwrap();
+        ca_key_file.flush().unwrap();
         let ca_key_path = ca_key_file.path();
         let ca_config = config::Ca {
             user_list_file: PathBuf::from("./config/user.toml"),

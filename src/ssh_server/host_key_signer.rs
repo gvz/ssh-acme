@@ -8,7 +8,7 @@ use anyhow::Result;
 use log::warn;
 use log::{error, info};
 use russh::ChannelId;
-use russh::client::{self, Config, Handler as ClientHandlerTrait};
+use russh::client::{self, Config};
 use russh::keys::PublicKey as RusshPublicKey;
 use russh::server::Session;
 use std::sync::Arc;
@@ -120,7 +120,7 @@ pub async fn handle_sign_host_key(
         .await?;
 
     info!(
-        "user {} requested signing of host key for host: {}",
+        "host {} requested signing of host key for host: {}",
         handler.username.as_ref().unwrap(),
         host_name
     );

@@ -1,25 +1,17 @@
-use async_trait::async_trait;
 use env_logger;
-use russh::Error;
-use russh::client::{AuthResult, Config, Handler, Session};
-use ssh_key::private;
-use ssh_key::public::PublicKey;
+use russh::client::{AuthResult, Config, Handler};
 use ssh_key::rand_core::OsRng;
-use ssh_key::{
-    Algorithm, Certificate,
-    private::{Ed25519Keypair, PrivateKey},
-};
-use std::env::{self, temp_dir};
+use ssh_key::{Algorithm, Certificate, private::PrivateKey};
+use std::env::{self};
 use std::fs::File;
 use std::io::Write;
 use std::sync::Arc;
 use std::time::Duration;
 use tempfile::tempdir;
-use tokio::process::{Child, Command};
 use tokio::time::sleep;
 
 use clap::Parser;
-use log::{debug, error, info, log};
+use log::{debug, info};
 use ssh_acme_server::{CliArgs, run_server};
 
 mod test_ssh_server;
@@ -66,12 +58,14 @@ async fn test_user_key_signing() {
     // Generate a dummy CA key
     let ca_key = PrivateKey::random(&mut OsRng, Algorithm::Ed25519).unwrap();
     let mut ca_private_key_file = File::create_new(&ca_private_key_path).unwrap();
-    ca_private_key_file.write_all(
-        ca_key
-            .to_openssh(ssh_key::LineEnding::LF)
-            .unwrap()
-            .as_bytes(),
-    );
+    ca_private_key_file
+        .write_all(
+            ca_key
+                .to_openssh(ssh_key::LineEnding::LF)
+                .unwrap()
+                .as_bytes(),
+        )
+        .unwrap();
 
     // Create host_keys directory
     let host_keys_dir = temp_dir.path().join("host_keys");
@@ -79,14 +73,15 @@ async fn test_user_key_signing() {
 
     // Generate a dummy host key
     let host_key_path = host_keys_dir.join("ssh_host_rsa_key");
-    let host_key = PrivateKey::random(&mut OsRng, Algorithm::Ed25519).unwrap();
     let mut host_private_key_file = File::create_new(host_key_path).unwrap();
-    host_private_key_file.write_all(
-        ca_key
-            .to_openssh(ssh_key::LineEnding::LF)
-            .unwrap()
-            .as_bytes(),
-    );
+    host_private_key_file
+        .write_all(
+            ca_key
+                .to_openssh(ssh_key::LineEnding::LF)
+                .unwrap()
+                .as_bytes(),
+        )
+        .unwrap();
     // Generate a dummy host key
     let mut user_key = PrivateKey::random(&mut OsRng, Algorithm::Ed25519).unwrap();
     user_key.set_comment("integration_test_user@test.com");
@@ -277,12 +272,14 @@ async fn test_host_key_signing() {
     // Generate a dummy CA key
     let ca_key = PrivateKey::random(&mut OsRng, Algorithm::Ed25519).unwrap();
     let mut ca_private_key_file = File::create_new(&ca_private_key_path).unwrap();
-    ca_private_key_file.write_all(
-        ca_key
-            .to_openssh(ssh_key::LineEnding::LF)
-            .unwrap()
-            .as_bytes(),
-    );
+    ca_private_key_file
+        .write_all(
+            ca_key
+                .to_openssh(ssh_key::LineEnding::LF)
+                .unwrap()
+                .as_bytes(),
+        )
+        .unwrap();
 
     // Create host_keys directory
     let host_keys_dir = temp_dir.path().join("host_keys");
@@ -292,12 +289,14 @@ async fn test_host_key_signing() {
     let host_key_path = host_keys_dir.join("ssh_host_rsa_key");
     let host_key = PrivateKey::random(&mut OsRng, Algorithm::Ed25519).unwrap();
     let mut host_private_key_file = File::create_new(host_key_path).unwrap();
-    host_private_key_file.write_all(
-        host_key
-            .to_openssh(ssh_key::LineEnding::LF)
-            .unwrap()
-            .as_bytes(),
-    );
+    host_private_key_file
+        .write_all(
+            host_key
+                .to_openssh(ssh_key::LineEnding::LF)
+                .unwrap()
+                .as_bytes(),
+        )
+        .unwrap();
 
     let key_to_sign = PrivateKey::random(&mut OsRng, Algorithm::Ed25519).unwrap();
     let key_to_sign_bytes = key_to_sign.to_bytes().unwrap();
@@ -309,7 +308,7 @@ async fn test_host_key_signing() {
     };
 
     let mut test_server = test_ssh_server::TestSshServer::new(test_server_config);
-    let test_server_process = tokio::spawn(async move { test_server.run().await });
+    let _test_server_process = tokio::spawn(async move { test_server.run().await });
 
     let socket_path = temp_dir.path().join("ca_socket");
 
