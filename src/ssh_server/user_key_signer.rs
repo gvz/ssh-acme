@@ -1,11 +1,7 @@
 use anyhow::Result;
 use log::{error, info};
 use russh::ChannelId;
-use russh::client::{self, Config};
-use russh::keys::PublicKey as RusshPublicKey;
 use russh::server::Session;
-use std::sync::Arc;
-use tokio::sync::{Mutex, oneshot};
 
 use crate::certificat_authority::key_from_openssh;
 use crate::certificat_authority::{CaRequest, CaResponse};

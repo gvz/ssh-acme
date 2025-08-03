@@ -17,8 +17,7 @@ use russh::{
 };
 use tokio::sync::Mutex;
 
-use crate::certificat_authority::key_from_openssh;
-use crate::certificat_authority::{CaRequest, CaResponse, ca_client::CaClient};
+use crate::certificat_authority::ca_client::CaClient;
 use crate::identiy_handlers::{Credential, UserAuthenticator};
 
 pub(crate) mod config;
@@ -177,6 +176,7 @@ impl Handler for ConnectionHandler {
                 });
             }
         }
+        #[allow(unreachable_code)]
         for authenticator in &self.server.user_authenticators {
             match authenticator.authenticate(user, Credential::Password(password)) {
                 Ok(true) => {

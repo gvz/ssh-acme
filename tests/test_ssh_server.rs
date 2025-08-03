@@ -1,17 +1,14 @@
-use std::collections::HashMap;
 use std::sync::Arc;
 
-use log::{debug, error, info, warn};
+use log::{debug, error};
 use russh::{
-    Channel, ChannelId,
+    Channel,
     keys::PrivateKey,
     server::{Auth, Handler, Msg, Server, Session},
 };
 
-use tokio::sync::Mutex;
-
 #[derive(Debug, Clone)]
-pub(crate) struct SshServerConfig {
+pub struct SshServerConfig {
     /// The address to bind the SSH server to.
     pub bind: String,
     /// The port to bind the SSH server to.
@@ -22,16 +19,17 @@ pub(crate) struct SshServerConfig {
 
 #[derive(Clone)]
 pub struct TestSshServer {
-    clients: Arc<Mutex<HashMap<usize, (ChannelId, russh::server::Handle)>>>,
     client_ids: usize,
     config: SshServerConfig,
 }
+#[allow(dead_code)]
 pub struct ConnectionHandler {
     server: Arc<TestSshServer>,
     username: Option<String>,
     id: usize,
     auth_method: Option<AuthMethod>,
 }
+#[allow(dead_code)]
 pub enum AuthMethod {
     Password,
     PublicKey,
@@ -39,7 +37,6 @@ pub enum AuthMethod {
 impl TestSshServer {
     pub fn new(config: SshServerConfig) -> Self {
         TestSshServer {
-            clients: Arc::new(Mutex::new(HashMap::new())),
             client_ids: 0,
             config,
         }
@@ -106,12 +103,14 @@ impl Handler for ConnectionHandler {
     ///
     /// This function iterates through the enabled authenticators and tries to
     /// authenticate the user with the given password.
+    #[allow(unused_variables)]
     async fn auth_password(&mut self, user: &str, password: &str) -> Result<Auth, Self::Error> {
         error!("test server does not implement authentication");
         Err(russh::Error::RequestDenied)
     }
 
     /// Handles a new session channel.
+    #[allow(unused_variables)]
     async fn channel_open_session(
         &mut self,
         channel: Channel<Msg>,
