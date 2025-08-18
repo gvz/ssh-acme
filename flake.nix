@@ -54,6 +54,7 @@
               systemd
               pcsclite
               pam
+              gnumake
             ];
             shellHook = ''
               export LIBCLANG_PATH="${llvmPackages.libclang.lib}/lib";

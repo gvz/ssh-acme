@@ -6,6 +6,8 @@ use std::fs::File;
 use std::io::Read;
 
 use anyhow::Result;
+#[cfg(feature = "arbitrary")]
+use arbitrary::{Arbitrary, Unstructured};
 use log::{debug, error, info};
 use serde::{Deserialize, Serialize};
 use ssh_key::rand_core::OsRng;
@@ -180,13 +182,28 @@ pub fn key_from_openssh(openssh_key: &str) -> Result<PublicKey> {
 
 /// Represents a request to the Certificate Authority.
 #[derive(Serialize, Deserialize, Debug)]
+#[cfg_attr(feature = "arbitrary", derive(Arbitrary))]
 pub enum CaRequest {
     /// A request to sign a certificate.
-    SignCertificate { user: String, public_key: PublicKey },
-    SignHostCertificate {
-        host_name: String,
+    SignCertificate {
+        user: String,
+        #[cfg_attr(feature = "arbitrary", arbitrary(with = arbitrary_public_key))]
         public_key: PublicKey,
     },
+    SignHostCertificate {
+        host_name: String,
+        #[cfg_attr(feature = "arbitrary", arbitrary(with = arbitrary_public_key))]
+        public_key: PublicKey,
+    },
+}
+#[cfg(feature = "arbitrary")]
+fn arbitrary_public_key(u: &mut Unstructured) -> arbitrary::Result<PublicKey> {
+    // Replace this with however you want to generate a PublicKey
+    // Examples:
+
+    // Option 1: If PublicKey has a constructor from bytes
+    let key_bytes: [u8; 32] = u.arbitrary()?; // 32 bytes should be enough for a Ed25519 keys
+    PublicKey::from_bytes(&key_bytes).map_err(|_| arbitrary::Error::IncorrectFormat)
 }
 
 /// Represents a response from the Certificate Authority.

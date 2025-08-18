@@ -16,7 +16,8 @@ use crate::ssh_server::SshAcmeServer;
 
 mod identiy_handlers;
 
-mod certificat_authority;
+pub mod certificat_authority;
+
 use crate::certificat_authority::{CertificateAuthority, ca_client::CaClient, ca_server::CaServer};
 
 mod config;

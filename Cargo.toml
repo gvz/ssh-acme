@@ -25,9 +25,17 @@ toml = "0.8.23"
 humantime = "2.1.0"
 async-trait = "0.1.88"
 tempfile = "3.10.1"
+arbitrary = { version = "1.4.2", optional = true, features = ["derive"] }
+ed25519-dalek = { version = "2.1.1", optional = true, features = ["serde"] }
+
 
 [features]
 test_auth =[]
+arbitrary = ["dep:arbitrary", "dep:ed25519-dalek"]
+default = []
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fuzzing)'] }
 
 [dev-dependencies]
 
