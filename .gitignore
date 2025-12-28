@@ -1,5 +1,6 @@
-/target
-/result
+**/target
+**/result
+**/out
 .gemini
 GEMINI.md
 SECURITY_ANALYSIS.md
