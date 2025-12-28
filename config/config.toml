@@ -7,7 +7,7 @@ private_key="/etc/ssh/ssh_host_ed25519_key"
 ca_key="../test_data/test_key"
 user_list_file="../test_data/test_key"
 default_user_template="../test_data/test_key"
-host_cert_template="../config/host_cert_template.toml"
+host_inventory="../config/hosts/"
 
 
 [identity_handlers]

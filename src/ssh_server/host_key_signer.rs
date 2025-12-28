@@ -146,6 +146,9 @@ pub async fn handle_sign_host_key(
             let _ = session.disconnect(russh::Disconnect::ByApplication, &error_message, "en");
             return Ok(());
         }
+        Ok(CaResponse::KeyFound(_)) => {
+            panic!("Signing request replyed with KeyFound, which must not happen")
+        }
     };
     let openssh_cert = match cert.to_openssh() {
         Ok(cert) => cert,

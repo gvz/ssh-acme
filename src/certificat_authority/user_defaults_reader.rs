@@ -126,7 +126,7 @@ mod test {
             user_list_file: PathBuf::from("./config/user.toml"),
             default_user_template: PathBuf::from("./config/user_default.toml"),
             ca_key: ca_key_path.to_path_buf(),
-            host_cert_template: PathBuf::from("./config/host_cert_template.toml"),
+            host_inventory: PathBuf::from("./config/hosts"),
         };
         let config = read_user_defaults("test", &ca_config).unwrap();
         println!("{:?}", config.validity_in_days);

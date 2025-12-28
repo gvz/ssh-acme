@@ -1,6 +1,7 @@
 validity_in_days = 365
 hostnames = [
-    "{{host_name}}"
+    "testhost"
+    "testhost.test"
 ]
 extensions = []
 

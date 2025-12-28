@@ -3,7 +3,7 @@ use russh::client::{AuthResult, Config, Handler};
 use ssh_key::rand_core::OsRng;
 use ssh_key::{Algorithm, Certificate, private::PrivateKey};
 use std::env::{self};
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::Write;
 use std::sync::Arc;
 use std::time::Duration;
@@ -15,12 +15,10 @@ use log::{debug, info};
 use ssh_acme_server::{CliArgs, run_server};
 
 mod common;
-
-use client_handler::ClientHandler;
-use common::{client_handler, ssh_test_server};
+use common::{client_handler::ClientHandler, ssh_test_server};
 
 #[tokio::test]
-async fn test_user_key_signing() {
+async fn test_host_key_signing() {
     if env::var("RUST_LOG").is_err() {
         unsafe {
             env::set_var("RUST_LOG", "info");
@@ -49,20 +47,28 @@ async fn test_user_key_signing() {
 
     // Generate a dummy host key
     let host_key_path = host_keys_dir.join("ssh_host_rsa_key");
+    let host_key = PrivateKey::random(&mut OsRng, Algorithm::Ed25519).unwrap();
     let mut host_private_key_file = File::create_new(host_key_path).unwrap();
     host_private_key_file
         .write_all(
-            ca_key
+            host_key
                 .to_openssh(ssh_key::LineEnding::LF)
                 .unwrap()
                 .as_bytes(),
         )
         .unwrap();
-    // Generate a dummy host key
-    let mut user_key = PrivateKey::random(&mut OsRng, Algorithm::Ed25519).unwrap();
-    user_key.set_comment("integration_test_user@test.com");
 
-    let user_public_key = user_key.public_key().to_openssh().unwrap();
+    let key_to_sign = PrivateKey::random(&mut OsRng, Algorithm::Ed25519).unwrap();
+    let key_to_sign_bytes = key_to_sign.to_bytes().unwrap();
+
+    let test_server_config = ssh_test_server::SshServerConfig {
+        bind: "127.0.0.1".to_string(),
+        port: 2225,
+        private_key: russh::keys::PrivateKey::from_bytes(&key_to_sign_bytes).unwrap(),
+    };
+
+    let mut test_server = ssh_test_server::TestSshServer::new(test_server_config);
+    let _test_server_process = tokio::spawn(async move { test_server.run().await });
 
     let socket_path = temp_dir.path().join("ca_socket");
 
@@ -72,7 +78,7 @@ async fn test_user_key_signing() {
         [ssh]
         host_key_dir = "{}/host_keys"
         bind = "127.0.0.1"
-        port = 2223
+        port = 2224
         private_key = "{}/host_keys/ssh_host_rsa_key"
 
         [ca]
@@ -80,7 +86,7 @@ async fn test_user_key_signing() {
         certificate_validity_days = 30
         user_list_file="{}/user.toml"
         default_user_template="{}/default_template.toml"
-        host_inventory="{}/host_cert_template.toml"
+        host_inventory="{}/hosts/"
 
         [identity_handlers]
         user_authenticators = []
@@ -146,12 +152,15 @@ async fn test_user_key_signing() {
     std::fs::write(&user_path, user_template).expect("Failed to write user template file");
 
     //host cert template
-    let host_cert_path = temp_dir.path().join("host_cert_template.toml");
+    let host_name = "test-host";
+    let host_inventory_path = temp_dir.path().join("hosts/");
+    let _ = fs::create_dir_all(host_inventory_path);
+    let host_cert_path = temp_dir.path().join(format!("hosts/{}.toml", host_name));
     let host_cert_template = format!(
         r#"
         validity_in_days=7
-        principals=[
-        "{{host_name}}"
+        host_names=[
+        "{}"
         ]
         extensions=[
         "no-port-forwarding",
@@ -163,6 +172,7 @@ async fn test_user_key_signing() {
 
         [critical_options]
         "#,
+        host_name
     );
     std::fs::write(&host_cert_path, host_cert_template)
         .expect("Failed to write host cert template file");
@@ -208,7 +218,7 @@ async fn test_user_key_signing() {
     let config = Config::default();
     let config = Arc::new(config);
     let sh = ClientHandler;
-    let mut session = russh::client::connect(config, ("127.0.0.1", 2223), sh)
+    let mut session = russh::client::connect(config, ("127.0.0.1", 2224), sh)
         .await
         .expect("Failed to connect to server");
 
@@ -220,8 +230,11 @@ async fn test_user_key_signing() {
 
     let mut channel = session.channel_open_session().await.unwrap();
     channel.request_shell(true).await.unwrap();
-    // send public key to server
-    channel.data(user_public_key.as_bytes()).await.unwrap();
+
+    let host_to_sign_public_key = key_to_sign.public_key().to_openssh().unwrap();
+
+    let command = format!("sign_host_key {} {}", host_name, host_to_sign_public_key);
+    channel.exec(true, command.as_bytes()).await.unwrap();
     channel.wait().await.unwrap();
 
     // You can add more client interactions here if needed

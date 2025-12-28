@@ -97,7 +97,7 @@ ca_key = "{}"
 certificate_validity_days = 30
 user_list_file="../test_data/test_key"
 default_user_template="../test_data/test_key"
-host_cert_template="../test_data/test_key"
+host_inventory="../test_data/"
 
 [identity_handlers]
 user_authenticators = ["pam"]

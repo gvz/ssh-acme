@@ -2235,6 +2235,7 @@ dependencies = [
  "duration-str",
  "ed25519-dalek",
  "env_logger",
+ "glob",
  "humantime",
  "log",
  "minijinja",

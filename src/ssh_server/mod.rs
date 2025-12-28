@@ -18,6 +18,7 @@ use russh::{
 use tokio::sync::Mutex;
 
 use crate::certificat_authority::ca_client::CaClient;
+use crate::certificat_authority::{CaRequest, CaResponse};
 use crate::identiy_handlers::{Credential, UserAuthenticator};
 
 pub(crate) mod config;
@@ -196,14 +197,54 @@ impl Handler for ConnectionHandler {
         Err(russh::Error::RequestDenied)
     }
 
+    // Check if the key in authorized for this host
+    //fn auth_publickey_offered(
+    //    &mut self,
+    //    user: &str,
+    //    public_key: &PublicKey,
+    //) -> impl Future<Output = Result<Auth, Self::Error>> + Send {
+    //}
+
     async fn auth_publickey(
         &mut self,
         user: &str,
-        _public_key: &russh::keys::PublicKey,
+        public_key: &russh::keys::PublicKey,
     ) -> Result<Auth, Self::Error> {
-        // Accept any user for public key authentication
+        // Accept any host who's public key is in a host config
+        // Russh verifies that the host is in possession of the private key
         info!("Public key authentication accepted for user/host: {}", user);
-        // TODO: build host authentication
+        let key_found = match self
+            .server
+            .ca_client
+            .send_request(&&CaRequest::CheckPublicKey {
+                public_key: ssh_key::PublicKey::from_openssh(&public_key.to_openssh().unwrap())
+                    .unwrap(),
+            })
+            .await
+        {
+            Ok(CaResponse::KeyFound(found)) => found,
+            Ok(CaResponse::Error(e)) => {
+                let error_message = format!("CA server error: {}", e);
+                error!("{}", &error_message);
+                false
+            }
+            Err(e) => {
+                let error_message = format!("Failed to send request to CA server: {}", e);
+                error!("{}", &error_message);
+                false
+            }
+            Ok(CaResponse::SignedCertificate(_)) => {
+                panic!("Key check reploed with signed cert, which must not happen")
+            }
+        };
+        if !key_found {
+            // key not in any config, reject host
+            return Ok(Auth::Reject {
+                partial_success: false,
+                proceed_with_methods: None,
+            });
+        }
+
         self.username = Some(user.to_string());
         self.auth_method = Some(AuthMethod::PublicKey);
         Ok(Auth::Accept)

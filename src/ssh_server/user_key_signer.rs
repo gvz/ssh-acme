@@ -1,7 +1,9 @@
 use anyhow::Result;
 use log::{error, info};
 use russh::ChannelId;
+use russh::client::{self, Config};
 use russh::server::Session;
+use tokio::sync;
 
 use crate::certificat_authority::key_from_openssh;
 use crate::certificat_authority::{CaRequest, CaResponse};
@@ -57,6 +59,9 @@ pub async fn handler_sign_user_key(
             error!("{}", &error_message);
             let _ = session.disconnect(russh::Disconnect::ByApplication, &error_message, "en");
             return Ok(());
+        }
+        Ok(CaResponse::KeyFound(_)) => {
+            panic!("Signing request replyed with KeyFound, which must not happen")
         }
     };
     let openssh_cert = match cert.to_openssh() {

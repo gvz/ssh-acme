@@ -87,6 +87,13 @@ impl CaServer {
                 let signed_cert = self.ca.sign_host_certificate(&host_name, &public_key)?;
                 Ok(CaResponse::SignedCertificate(signed_cert))
             }
+            CaRequest::CheckPublicKey { public_key } => {
+                let str_key = match public_key.to_openssh() {
+                    Ok(key) => key,
+                    Err(_) => return Ok(CaResponse::KeyFound(false)),
+                };
+                Ok(CaResponse::KeyFound(self.ca.is_public_key_known(&str_key)))
+            }
         }
     }
 }

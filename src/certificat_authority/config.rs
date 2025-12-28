@@ -16,8 +16,8 @@ pub struct Ca {
     pub user_list_file: PathBuf,
     /// The path to the default user template file.
     pub default_user_template: PathBuf,
-    /// The path to the host certificate template file.
-    pub host_cert_template: PathBuf,
+    /// The path to the host inventory.
+    pub host_inventory: PathBuf,
     /// The path to the CA's private key.
     pub ca_key: PathBuf,
 }
@@ -46,10 +46,10 @@ impl InsertConfigRoot for Ca {
             ca_key_path.push(&self.user_list_file);
             self.user_list_file = ca_key_path;
         }
-        if !&self.host_cert_template.has_root() {
-            let mut ca_key_path = config_root.clone();
-            ca_key_path.push(&self.host_cert_template);
-            self.host_cert_template = ca_key_path;
+        if !&self.host_inventory.has_root() {
+            let mut host_inventory = config_root.clone();
+            host_inventory.push(&self.host_inventory);
+            self.host_inventory = host_inventory;
         }
         Ok(())
     }

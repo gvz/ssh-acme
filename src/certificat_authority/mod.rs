@@ -16,12 +16,19 @@ use ssh_key::{
     certificate::{Builder as CertBuilder, CertType, Certificate},
     private::PrivateKey,
 };
+use thiserror::Error;
 
 pub mod ca_client;
 pub mod ca_server;
 pub mod config;
-mod host_defaults_reader;
+mod host_config_reader;
 mod user_defaults_reader;
+
+#[derive(Debug, Error)]
+pub enum CaError {
+    #[error("wrong public key for host: {0}")]
+    WrongPublicKey(String),
+}
 
 /// Represents the Certificate Authority.
 #[derive(Clone)]
@@ -107,6 +114,13 @@ impl CertificateAuthority {
         Ok(cert)
     }
 
+    pub fn is_public_key_known(&self, public_key: &str) -> bool {
+        match host_config_reader::find_config_by_public_key(public_key, &self.config) {
+            Some(_) => true,
+            None => false,
+        }
+    }
+
     /// Signs an SSH public key and returns a certificate.
     ///
     /// # Arguments
@@ -130,7 +144,10 @@ impl CertificateAuthority {
                 .unwrap_or_else(|_| "broken public key".to_string()),
             host_name
         );
-        let host_defaults = host_defaults_reader::read_host_defaults(host_name, &self.config)?;
+        let host_config = host_config_reader::read_host_config(host_name, &self.config)?;
+        if &PublicKey::from_openssh(&host_config.public_key).unwrap() != public_key {
+            return Err(CaError::WrongPublicKey(host_name.to_string()).into());
+        }
         let valid_after = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -139,19 +156,19 @@ impl CertificateAuthority {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs()
-            + (host_defaults.validity_in_days as u64 * 86400_u64);
+            + (host_config.validity_in_days as u64 * 86400_u64);
         let mut cert_builder =
             CertBuilder::new_with_random_nonce(&mut OsRng, public_key, valid_after, valid_before)?;
         cert_builder.serial(42)?; // Optional: serial number chosen by the CA
         cert_builder.key_id("nobody-cert-02")?; // Optional: CA-specific key identifier
         cert_builder.cert_type(CertType::Host)?; // User or host certificate
-        for principal in host_defaults.principals {
+        for principal in host_config.hostnames {
             debug!("adding principal: {}", principal);
             let _ = cert_builder.valid_principal(principal); // Unix username or hostname
         }
 
         cert_builder.comment(public_key.comment())?; // Comment (typically an email address)
-        for extension in host_defaults.extensions {
+        for extension in host_config.extensions {
             cert_builder.extension(extension, "")?;
         }
 
@@ -190,6 +207,10 @@ pub enum CaRequest {
         #[cfg_attr(feature = "arbitrary", arbitrary(with = arbitrary_public_key))]
         public_key: PublicKey,
     },
+    CheckPublicKey {
+        #[cfg_attr(feature = "arbitrary", arbitrary(with = arbitrary_public_key))]
+        public_key: PublicKey,
+    },
     SignHostCertificate {
         host_name: String,
         #[cfg_attr(feature = "arbitrary", arbitrary(with = arbitrary_public_key))]
@@ -213,6 +234,8 @@ pub enum CaResponse {
     SignedCertificate(Certificate),
     /// An error that occurred during processing.
     Error(String),
+    /// is the key valid
+    KeyFound(bool),
 }
 
 #[cfg(test)]
@@ -246,7 +269,7 @@ mod test {
             user_list_file: PathBuf::from("./config/user.toml"),
             ca_key: ca_key_path.to_path_buf(),
             default_user_template: PathBuf::from("./config/user_default.toml"),
-            host_cert_template: PathBuf::from("./config/host_cert_template.toml"),
+            host_inventory: PathBuf::from("./config/hosts/"),
         };
 
         let authority = CertificateAuthority {
