@@ -82,48 +82,13 @@ pub async fn handle_sign_host_key(
     let host_port = format!("localhost:2225",);
     #[cfg(feature = "test_auth")]
     warn!("test host verification");
-    #[cfg(not(feature = "test_auth"))]
-    let host_port = format!("{}:22", host_name);
-
-    let session_client = match client::connect(Arc::new(client_config), host_port, sh).await {
-        Ok(session) => session,
-        Err(e) => {
-            let error_message = format!("failed to connect to host {}: {}", host_name, e);
-            error!("{}", &error_message);
-            let _ = session.disconnect(russh::Disconnect::ByApplication, &error_message, "en");
-            return Ok(());
-        }
-    };
-
-    let remote_public_key = match receiver.await {
-        Ok(key) => key,
-        Err(e) => {
-            let error_message = format!("failed to get public key from host {}: {}", host_name, e);
-            error!("{}", &error_message);
-            let _ = session.disconnect(russh::Disconnect::ByApplication, &error_message, "en");
-            return Ok(());
-        }
-    };
-
-    if remote_public_key != public_key_russh {
-        let error_message = format!("public key mismatch for host {}", host_name);
-        error!("{}", &error_message);
-        let _ = session.disconnect(russh::Disconnect::ByApplication, &error_message, "en");
-        return Ok(());
-    }
-    session_client
-        .disconnect(
-            russh::Disconnect::ByApplication,
-            "Host key verification complete",
-            "en",
-        )
-        .await?;
 
     info!(
         "host {} requested signing of host key for host: {}",
         handler.username.as_ref().unwrap(),
         host_name
     );
+
     let cert = match handler
         .server
         .ca_client
@@ -147,7 +112,7 @@ pub async fn handle_sign_host_key(
             return Ok(());
         }
         Ok(CaResponse::KeyFound(_)) => {
-            panic!("Signing request replyed with KeyFound, which must not happen")
+            panic!("Signing request replied with KeyFound, which must not happen")
         }
     };
     let openssh_cert = match cert.to_openssh() {
