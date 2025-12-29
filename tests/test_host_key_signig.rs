@@ -159,9 +159,10 @@ async fn test_host_key_signing() {
     let host_cert_template = format!(
         r#"
         validity_in_days=7
-        host_names=[
+        hostnames=[
         "{}"
         ]
+        public_key="{}"
         extensions=[
         "no-port-forwarding",
         "no-agent-forwarding",
@@ -172,7 +173,8 @@ async fn test_host_key_signing() {
 
         [critical_options]
         "#,
-        host_name
+        host_name,
+        key_to_sign.public_key().to_openssh().unwrap().to_string()
     );
     std::fs::write(&host_cert_path, host_cert_template)
         .expect("Failed to write host cert template file");
