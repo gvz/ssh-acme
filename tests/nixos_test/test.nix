@@ -3,25 +3,36 @@ let pkgs = import nixpkgs { system = "x86_64-linux"; };
 in pkgs.nixosTest {
   name = "ssh-acme-server-test";
   nodes.CA = {
-    environment.systemPackages =
-      [ self.defaultPackage."x86_64-linux" pkgs.openssh ];
+    # Import the module from the flake
+    imports = [ self.nixosModules.default ];
+
+    # Keep openssh for ssh-keygen
+    environment.systemPackages = [ pkgs.openssh ];
+
+    # Enable and configure the service
+    services.ssh-acme-server = {
+      enable = true;
+      # Point the service to the config file copied by the test script
+      configFile = "/etc/ssh_acme/config.toml";
+    };
   };
 
   testScript = ''
     start_all()
     CA.wait_for_unit("multi-user.target")
 
-    #copy config
+    # Copy config from host to VM
     CA.copy_from_host("${./config}", "/etc/ssh_acme")
-    ret = CA.succeed("ls -l /etc/systemd/system/")
-    print(ret)
 
+    # Generate CA key
     CA.succeed("ssh-keygen -t ed25519 -f /etc/ssh_acme/ca_key -C CA_KEY -N \"\" ")
     CA.copy_from_vm("/etc/ssh_acme/ca_key.pub", "./ca_key.pub")
 
-    CA.succeed("systemctl daemon-reload")
-    # start server
-    CA.succeed("systemctl start ssh_acme")
-    CA.wait_for_unit("ssh_acme","root", 10)
+    # The service should start automatically because it's enabled.
+    # We just need to wait for it to become active.
+    CA.wait_for_unit("ssh-acme-server.service")
+
+    # Verify that the service is indeed active
+    CA.succeed("systemctl is-active ssh-acme-server.service")
   '';
 }
