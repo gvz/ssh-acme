@@ -1,0 +1,18 @@
+[ssh]
+bind="0.0.0.0"
+port=2222
+private_key="/etc/ssh/ssh_host_ed25519_key"
+
+[ca]
+ca_key="/etc/ssh_acme/ca_key"
+user_list_file="/etc/ssh_acme/user.toml"
+default_user_template="/etc/ssh_acme/user_default.toml"
+host_inventory="/etc/ssh_acme/hosts/"
+
+
+[identity_handlers]
+user_authenticators=[
+  "pam",
+]
+
+

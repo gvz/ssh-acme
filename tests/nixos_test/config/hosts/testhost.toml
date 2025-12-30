@@ -1,0 +1,8 @@
+validity_in_days = 365
+hostnames = [
+    "testhost"
+    "testhost.test"
+]
+extensions = []
+
+[critical_options]

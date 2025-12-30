@@ -1,0 +1,8 @@
+[Unit]
+Description=SSH Certificate Authority
+
+[Service]
+ExecStart=/run/current-system/sw/bin/ssh_acme_server -c /etc/ssh_acme/config.toml
+
+[Install]
+WantedBy=multi-user.target

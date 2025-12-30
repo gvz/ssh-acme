@@ -13,7 +13,7 @@
 
       in {
         defaultPackage = naersk-lib.buildPackage {
-          doCheck = true;
+          doCheck = false;
           release = true;
           cargoTestOptions = x: x ++ [ "--features test_auth" ];
 
@@ -61,5 +61,9 @@
             '';
             RUST_SRC_PATH = rustPlatform.rustLibSrc;
           };
+        checks = {
+          nixos-test =
+            import ./tests/nixos_test/test.nix { inherit self nixpkgs; };
+        };
       });
 }
