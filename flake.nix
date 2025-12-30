@@ -13,13 +13,11 @@
         lib = nixpkgs.lib;
 
         # The package containing your application binary
-        app = naersk-lib.buildPackage {
+        common = {
           pname = "ssh_acme_server";
           version = "0.1.0"; # You can manage this version as you see fit
 
-          doCheck = false;
           release = true;
-          cargoTestOptions = x: x ++ [ "--features test_auth" ];
 
           src = ./.;
           buildInputs = with pkgs; [
@@ -35,11 +33,55 @@
           ];
           LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
         };
+
+        app = naersk-lib.buildPackage (common // { doCheck = false; });
+        # this only exists to be able to run all test run with "cargo test" also in "nix flake test"
+        test_app = naersk-lib.buildPackage (common // {
+          doCheck = true;
+          cargoTestOptions = x: x ++ [ "--features test_auth" ];
+        });
+        # The NixOS module that provides the systemd service
+        sshAcmeServerModule = { config, ... }: {
+          options.services.ssh-acme-server = {
+            enable = lib.mkEnableOption "ssh-acme-server";
+
+            configFile = lib.mkOption {
+              type = lib.types.path;
+              default = "/etc/ssh_acme_server/config.toml";
+              description = "Path to the ssh-acme-server configuration file.";
+            };
+
+            dataDir = lib.mkOption {
+              type = lib.types.path;
+              default = "/var/lib/ssh-acme-server";
+              description = "The data directory for the ssh-acme-server.";
+            };
+          };
+
+          config = lib.mkIf config.services.ssh-acme-server.enable {
+            # Create a dedicated user for the service
+
+            systemd.services.ssh-acme-server = {
+              description = "SSH ACME Server";
+              wantedBy = [ "multi-user.target" ];
+              after = [ "network.target" ];
+
+              serviceConfig = {
+                Environment = "RUST_LOG=debug";
+                ExecStart = ''
+                  ${app}/bin/ssh_acme_server -c ${config.services.ssh-acme-server.configFile}
+                '';
+
+                Restart = "no";
+                # Creates /var/lib/ssh-acme-server with correct ownership
+                StateDirectory = "ssh-acme-server";
+              };
+            };
+          };
+        };
       in {
         # Replaces `defaultPackage` with the standard `packages.default`
-        packages = {
-          default = app;
-        };
+        packages = { default = app; };
 
         # The old `defaultPackage` for compatibility if needed elsewhere
         defaultPackage = app;
@@ -74,54 +116,14 @@
             '';
             RUST_SRC_PATH = rustPlatform.rustLibSrc;
           };
+
+        nixosModules.default = sshAcmeServerModule;
+
         checks = {
-          nixos-test =
-            import ./tests/nixos_test/test.nix { inherit self nixpkgs; };
-        };
-
-        # The NixOS module that provides the systemd service
-        nixosModules.default = { config, ... }: {
-          options.services.ssh-acme-server = {
-            enable = lib.mkEnableOption "ssh-acme-server";
-
-            configFile = lib.mkOption {
-              type = lib.types.path;
-              default = "/etc/ssh_acme_server/config.toml";
-              description = "Path to the ssh-acme-server configuration file.";
-            };
-            
-            dataDir = lib.mkOption {
-              type = lib.types.path;
-              default = "/var/lib/ssh-acme-server";
-              description = "The data directory for the ssh-acme-server.";
-            };
-          };
-
-          config = lib.mkIf config.services.ssh-acme-server.enable {
-            # Create a dedicated user for the service
-            users.users.ssh-acme-server = {
-              isSystemUser = true;
-              group = "ssh-acme-server";
-              home = config.services.ssh-acme-server.dataDir;
-            };
-            users.groups.ssh-acme-server = {};
-
-            systemd.services.ssh-acme-server = {
-              description = "SSH ACME Server";
-              wantedBy = [ "multi-user.target" ];
-              after = [ "network.target" ];
-
-              serviceConfig = {
-                User = "ssh-acme-server";
-                Group = "ssh-acme-server";
-                ExecStart = ''
-                  ${self.packages.${system}.default}/bin/ssh_acme_server -c ${config.services.ssh-acme-server.configFile}
-                '';
-                Restart = "on-failure";
-                # Creates /var/lib/ssh-acme-server with correct ownership
-                StateDirectory = "ssh-acme-server"; 
-              };
-            };
+          cargo-tests = test_app;
+          nixos-test = import ./tests/nixos_test/test.nix {
+            inherit nixpkgs;
+            sshAcmeServerModule = sshAcmeServerModule;
           };
         };
       });
