@@ -12,10 +12,17 @@ jobs:
       - name: Building package
         run: nix build
 
-  integration_test:
+  cargo_integration_test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
       - uses: cachix/install-nix-action@v26
       - name: Building package
         run: nix develop -c cargo test --test integration_test --features test_auth
+  nixos_integration_test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: cachix/install-nix-action@v26
+      - name: Building package
+        run: nix build ".#checks.x86_64-linux.nixos-test"
