@@ -13,6 +13,7 @@ use anyhow::Result;
 use log::{debug, error, info, warn};
 use russh::{
     Channel, ChannelId,
+    keys::PublicKey,
     server::{Auth, Handler, Msg, Server, Session},
 };
 use tokio::sync::Mutex;
@@ -54,6 +55,7 @@ pub struct ConnectionHandler {
     username: Option<String>,
     id: usize,
     auth_method: Option<AuthMethod>,
+    public_key: Option<PublicKey>,
 }
 
 impl SshAcmeServer {
@@ -132,6 +134,7 @@ impl Server for SshAcmeServer {
             username: None,
             server: Arc::new(self.clone()),
             auth_method: None,
+            public_key: None,
         };
 
         let client_address = match socket_addr {
@@ -247,6 +250,7 @@ impl Handler for ConnectionHandler {
 
         self.username = Some(user.to_string());
         self.auth_method = Some(AuthMethod::PublicKey);
+        self.public_key = Some(public_key.clone());
         Ok(Auth::Accept)
     }
 
@@ -281,7 +285,9 @@ impl Handler for ConnectionHandler {
         let command = String::from_utf8_lossy(data);
         let mut parts = command.split_whitespace();
         let command_name = parts.next().unwrap_or("");
-        let args: Vec<&str> = parts.collect();
+        let pub_key = self.public_key.clone().unwrap().to_openssh().unwrap();
+        let hostname = self.username.clone().unwrap();
+        let args: Vec<&str> = vec![&hostname, &pub_key];
 
         match command_name {
             "sign_host_key" => {
