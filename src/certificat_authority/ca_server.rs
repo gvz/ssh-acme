@@ -77,6 +77,7 @@ impl CaServer {
     pub fn handle_request(&self, request: CaRequest) -> Result<CaResponse> {
         match request {
             CaRequest::SignCertificate { user, public_key } => {
+                debug!("signing user certificate");
                 let signed_cert = self.ca.sign_certificate(&user, &public_key)?;
                 Ok(CaResponse::SignedCertificate(signed_cert))
             }
@@ -84,13 +85,21 @@ impl CaServer {
                 host_name,
                 public_key,
             } => {
+                debug!("signing host certificate");
                 let signed_cert = self.ca.sign_host_certificate(&host_name, &public_key)?;
                 Ok(CaResponse::SignedCertificate(signed_cert))
             }
             CaRequest::CheckPublicKey { public_key } => {
+                debug!("checking public key");
                 let str_key = match public_key.to_openssh() {
-                    Ok(key) => key,
-                    Err(_) => return Ok(CaResponse::KeyFound(false)),
+                    Ok(key) => {
+                        debug!("public key as openssh {} ", key);
+                        key
+                    }
+                    Err(_) => {
+                        debug!("public key ist not convertable to openssh");
+                        return Ok(CaResponse::KeyFound(false));
+                    }
                 };
                 Ok(CaResponse::KeyFound(self.ca.is_public_key_known(&str_key)))
             }

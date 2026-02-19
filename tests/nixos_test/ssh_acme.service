@@ -2,6 +2,7 @@
 Description=SSH Certificate Authority
 
 [Service]
+Environment="RUST_LOG=debug"
 ExecStart=/run/current-system/sw/bin/ssh_acme_server -c /etc/ssh_acme/config.toml
 
 [Install]

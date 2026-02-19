@@ -1,4 +1,4 @@
-# SSH ACME Server
+# SSH Certificate Authority
 
 This project aims to provide a self-hosted SSH Certificate Authority (CA) similar to Let's Encrypt, but for SSH certificates. It allows users to obtain and manage SSH certificates for their machines, enhancing security by leveraging short-lived, automatically renewed certificates instead of long-lived SSH keys.
 

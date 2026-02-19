@@ -287,6 +287,7 @@ impl Handler for ConnectionHandler {
         {
             let mut clients = self.server.clients.lock().await;
             clients.insert(self.id, (channel.id(), session.handle()));
+            debug!("new client connected");
         }
         Ok(true)
     }
@@ -297,6 +298,7 @@ impl Handler for ConnectionHandler {
         data: &[u8],
         session: &mut Session,
     ) -> std::result::Result<(), Self::Error> {
+        debug!("user key signing found");
         user_key_signer::handler_sign_user_key(self, channel, data, session).await
     }
 

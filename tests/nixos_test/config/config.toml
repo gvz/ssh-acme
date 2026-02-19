@@ -1,7 +1,9 @@
 [ssh]
-bind="0.0.0.0"
+#bind="0.0.0.0"
+bind="::"
 port=2222
 private_key="/etc/ssh/ssh_host_ed25519_key"
+certificate="/etc/ssh/ssh_host_ed25519_key-cert.pub"
 
 [ca]
 ca_key="/etc/ssh_acme/ca_key"

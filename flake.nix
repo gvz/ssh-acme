@@ -5,12 +5,24 @@
     utils.url = "github:numtide/flake-utils";
   };
 
-  outputs = { self, nixpkgs, utils, naersk }:
-    utils.lib.eachDefaultSystem (system:
+  outputs =
+    {
+      self,
+      nixpkgs,
+      utils,
+      naersk,
+    }:
+    utils.lib.eachDefaultSystem (
+      system:
       let
         pkgs = import nixpkgs { inherit system; };
         naersk-lib = pkgs.callPackage naersk { };
         lib = nixpkgs.lib;
+        russh-src = pkgs.fetchgit {
+          url = "https://github.com/gvz/russh.git";
+          rev = "1fe6853";
+          hash = "sha256-UYrFXRLhqW7cV3CBHVURebNlFjVh4Iopf6keMAVrhUI=";
+        };
 
         # The package containing your application binary
         common = {
@@ -32,61 +44,76 @@
             pam
           ];
           LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
+          postPatch = ''
+            substituteInPlace Cargo.toml \
+                --replace 'git = "https://github.com/gvz/russh.git"' \
+                          'path = "${russh-src}/russh"'
+                cat Cargo.toml
+          '';
         };
 
         app = naersk-lib.buildPackage (common // { doCheck = false; });
         # this only exists to be able to run all test run with "cargo test" also in "nix flake test"
-        test_app = naersk-lib.buildPackage (common // {
-          doCheck = true;
-          cargoTestOptions = x: x ++ [ "--features test_auth" ];
-        });
+        test_app = naersk-lib.buildPackage (
+          common
+          // {
+            doCheck = true;
+            cargoTestOptions = x: x ++ [ "--features test_auth" ];
+          }
+        );
         # The NixOS module that provides the systemd service
-        sshAcmeServerModule = { config, ... }: {
-          options.services.ssh-acme-server = {
-            enable = lib.mkEnableOption "ssh-acme-server";
+        sshAcmeServerModule =
+          { config, ... }:
+          {
+            options.services.ssh-acme-server = {
+              enable = lib.mkEnableOption "ssh-acme-server";
 
-            configFile = lib.mkOption {
-              type = lib.types.path;
-              default = "/etc/ssh_acme_server/config.toml";
-              description = "Path to the ssh-acme-server configuration file.";
+              configFile = lib.mkOption {
+                type = lib.types.path;
+                default = "/etc/ssh_acme_server/config.toml";
+                description = "Path to the ssh-acme-server configuration file.";
+              };
+
+              dataDir = lib.mkOption {
+                type = lib.types.path;
+                default = "/var/lib/ssh-acme-server";
+                description = "The data directory for the ssh-acme-server.";
+              };
             };
 
-            dataDir = lib.mkOption {
-              type = lib.types.path;
-              default = "/var/lib/ssh-acme-server";
-              description = "The data directory for the ssh-acme-server.";
-            };
-          };
+            config = lib.mkIf config.services.ssh-acme-server.enable {
+              # Create a dedicated user for the service
 
-          config = lib.mkIf config.services.ssh-acme-server.enable {
-            # Create a dedicated user for the service
+              systemd.services.ssh-acme-server = {
+                description = "SSH ACME Server";
+                wantedBy = [ "multi-user.target" ];
+                after = [ "network.target" ];
 
-            systemd.services.ssh-acme-server = {
-              description = "SSH ACME Server";
-              wantedBy = [ "multi-user.target" ];
-              after = [ "network.target" ];
+                serviceConfig = {
+                  Environment = "RUST_LOG=debug";
+                  ExecStart = ''
+                    ${app}/bin/ssh_acme_server -c ${config.services.ssh-acme-server.configFile}
+                  '';
 
-              serviceConfig = {
-                Environment = "RUST_LOG=debug";
-                ExecStart = ''
-                  ${app}/bin/ssh_acme_server -c ${config.services.ssh-acme-server.configFile}
-                '';
-
-                Restart = "no";
-                # Creates /var/lib/ssh-acme-server with correct ownership
-                StateDirectory = "ssh-acme-server";
+                  Restart = "no";
+                  # Creates /var/lib/ssh-acme-server with correct ownership
+                  StateDirectory = "ssh-acme-server";
+                };
               };
             };
           };
-        };
-      in {
+      in
+      {
         # Replaces `defaultPackage` with the standard `packages.default`
-        packages = { default = app; };
+        packages = {
+          default = app;
+        };
 
         # The old `defaultPackage` for compatibility if needed elsewhere
         defaultPackage = app;
 
-        devShell = with pkgs;
+        devShell =
+          with pkgs;
           mkShell {
             buildInputs = [
               cargo
@@ -126,5 +153,6 @@
             sshAcmeServerModule = sshAcmeServerModule;
           };
         };
-      });
+      }
+    );
 }

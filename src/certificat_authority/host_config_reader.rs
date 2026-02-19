@@ -41,6 +41,7 @@ pub fn read_host_config(host_name: &str, config: &config::Ca) -> Result<HostConf
     let host_config = read_config(host_inventory_path.to_str().unwrap())?;
     Ok(host_config)
 }
+
 pub fn find_config_by_public_key(public_key: &str, config: &config::Ca) -> Option<HostConfig> {
     for file in glob(&format!(
         "{}/**/*.toml",
@@ -49,8 +50,12 @@ pub fn find_config_by_public_key(public_key: &str, config: &config::Ca) -> Optio
     .unwrap()
     .flatten()
     {
+        debug!("checking for public key in {}", file.to_str().unwrap());
         let host_config = match read_config(file.to_str().unwrap()) {
-            Err(_) => return None,
+            Err(e) => {
+                error!("could not read {}: {}", file.to_str().unwrap(), e);
+                return None;
+            }
             Ok(conf) => conf,
         };
         if host_config.public_key != public_key {
@@ -60,6 +65,10 @@ pub fn find_config_by_public_key(public_key: &str, config: &config::Ca) -> Optio
             );
             continue;
         } else {
+            debug!(
+                "host for public key found: {}",
+                host_config.hostnames.first().unwrap()
+            );
             return Some(host_config);
         }
     }
@@ -67,15 +76,27 @@ pub fn find_config_by_public_key(public_key: &str, config: &config::Ca) -> Optio
 }
 
 fn read_config(file: &str) -> Result<HostConfig> {
-    let mut config_file = File::open(&file).map_err(|e| {
+    let mut config_file = match File::open(&file).map_err(|e| {
         error!("failed to open host inventory, {:?}: {}", &file, e);
         e
-    })?;
+    }) {
+        Err(e) => {
+            error!("failed to read {}: {}", file, e);
+            return Err(e.into());
+        }
+        Ok(config_file) => config_file,
+    };
     let mut config_text = String::new();
-    let _ = config_file.read_to_string(&mut config_text).map_err(|e| {
+    let _ = match config_file.read_to_string(&mut config_text).map_err(|e| {
         error!("failed to read host template, {:?}: {}", &file, e);
         e
-    })?;
+    }) {
+        Err(e) => {
+            error!("failed to read to string {}: {}", config_text, e);
+            return Err(e.into());
+        }
+        Ok(_) => {}
+    };
     let config: HostConfig = toml::from_str(&config_text)?;
 
     Ok(config)
