@@ -91,27 +91,51 @@ impl SshAcmeServer {
                 error!("failed to load private keys: {}", e);
                 panic!("failed")
             });
-        info!(
-            "loaded private key: {}",
-            &server_private_key_path.to_str().unwrap()
-        );
 
         let mut auth_methods = russh::MethodSet::empty();
         auth_methods.push(russh::MethodKind::Password);
         auth_methods.push(russh::MethodKind::PublicKey);
 
-        let ssh_config = russh::server::Config {
-            inactivity_timeout: Some(std::time::Duration::from_secs(3600)),
-            auth_rejection_time: std::time::Duration::from_secs(3),
-            auth_rejection_time_initial: Some(std::time::Duration::from_secs(0)),
-            max_auth_attempts: 1,
-            methods: auth_methods,
-            keys: vec![server_private_key],
-            preferred: russh::Preferred {
-                ..russh::Preferred::default()
+        let ssh_config = match &self.config.certificate {
+            // build ssh server config to use public key
+            None => russh::server::Config {
+                inactivity_timeout: Some(std::time::Duration::from_secs(3600)),
+                auth_rejection_time: std::time::Duration::from_secs(3),
+                auth_rejection_time_initial: Some(std::time::Duration::from_secs(0)),
+                max_auth_attempts: 1,
+                methods: auth_methods,
+                keys: vec![server_private_key],
+                preferred: russh::Preferred {
+                    ..russh::Preferred::default()
+                },
+                ..Default::default()
             },
-            ..Default::default()
+            // build ssh server config to use certificate
+            Some(server_certificate_path_str) => {
+                let server_certificate_path = PathBuf::from(server_certificate_path_str);
+                let server_certificate = russh::keys::load_openssh_certificate(
+                    &server_certificate_path,
+                )
+                .unwrap_or_else(|e| {
+                    error!("failed to load certificate: {}", e);
+                    panic!("failed")
+                });
+                russh::server::Config {
+                    inactivity_timeout: Some(std::time::Duration::from_secs(3600)),
+                    auth_rejection_time: std::time::Duration::from_secs(3),
+                    auth_rejection_time_initial: Some(std::time::Duration::from_secs(0)),
+                    max_auth_attempts: 1,
+                    methods: auth_methods,
+                    keys: vec![server_private_key],
+                    certificates: vec![server_certificate],
+                    preferred: russh::Preferred {
+                        ..russh::Preferred::default()
+                    },
+                    ..Default::default()
+                }
+            }
         };
+
         info!(
             "starting ssh server at {}:{}",
             &self.config.bind, self.config.port

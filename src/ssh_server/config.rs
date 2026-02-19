@@ -18,6 +18,8 @@ pub(crate) struct SshServerConfig {
     pub port: u16,
     /// The path to the server's private key.
     pub private_key: String,
+    /// The path to the server's certificate.
+    pub certificate: Option<String>,
 }
 
 impl InsertConfigRoot for SshServerConfig {
