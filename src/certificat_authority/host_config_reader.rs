@@ -7,7 +7,7 @@ use std::io::Read;
 
 use anyhow::Result;
 use glob::glob;
-use log::{debug, error};
+use log::{debug, error, warn};
 use serde::Deserialize;
 
 use crate::certificat_authority::config;
@@ -58,10 +58,20 @@ pub fn find_config_by_public_key(public_key: &str, config: &config::Ca) -> Optio
             }
             Ok(conf) => conf,
         };
-        if host_config.public_key != public_key {
+        let key_parts: Vec<&str> = host_config.public_key.split_whitespace().collect();
+        if key_parts.len() < 2 {
+            warn!(
+                "skipping malformated key in config {}: {}",
+                file.to_str().unwrap(),
+                public_key
+            );
+            continue;
+        }
+        let formatted_host_key = format!("{} {}", key_parts[0], key_parts[1]);
+        if formatted_host_key != public_key {
             debug!(
                 "host key not matching for {}: {} != {}",
-                host_config.hostnames[0], host_config.public_key, public_key
+                host_config.hostnames[0], formatted_host_key, public_key
             );
             continue;
         } else {
