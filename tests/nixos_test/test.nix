@@ -133,7 +133,7 @@ pkgs.testers.nixosTest {
     print(test_key)
 
     # Get TestHost's host key signed
-    TestHost.succeed("ssh -i /etc/ssh/ssh_host_ed25519_key -p 2222 TestHost@CA > /tmp/TestHost.cert")
+    TestHost.succeed("ssh -i /etc/ssh/ssh_host_ed25519_key -p 2222 TestHost@CA \"sign_host_key $(cat /etc/ssh/ssh_host_ed25519_key.pub)\" > /tmp/TestHost.cert")
     print("CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC")
     ret = TestHost.succeed("cat /tmp/TestHost.cert")
     print(ret)
