@@ -1,5 +1,5 @@
 [users]
-test="./test_user_template.toml"
-test2="./test2_user_template.toml"
+alice="./test_user_template.toml"
+bob="./test_user_template.toml"
 
 

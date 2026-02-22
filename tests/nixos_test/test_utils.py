@@ -21,9 +21,9 @@ def prepare_Client(Client, CA):
     copy_between_hosts(CA,"/etc/ssh_acme/ca_key.pub", Client,"/tmp/ca_key.pub")
 
 
-def build_test_host_config(TestHost, CA):
-    TestHost.succeed("chmod go-rwx /etc/ssh/ssh_host_ed25519_key.pub")
-    key = TestHost.succeed("cat /etc/ssh/ssh_host_ed25519_key.pub").strip()
+def build_test_host_config(TestHost, CA, host_key_path="/etc/ssh/ssh_host_ed25519_key"):
+    TestHost.succeed(f"chmod go-rwx {host_key_path}.pub")
+    key = TestHost.succeed(f"cat {host_key_path}.pub").strip()
     template = CA.succeed("cat /etc/ssh_acme/hosts/testhost.toml.j2")
     host_config = Template(template).render(public_key=key)
     with open("testhost.toml","w+") as template_file:
