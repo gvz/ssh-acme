@@ -3,6 +3,7 @@ hostnames = [
     "testhost"
     "testhost.test"
 ]
+public_key = "<PUBLIC_KEY>"
 extensions = []
 
 [critical_options]
