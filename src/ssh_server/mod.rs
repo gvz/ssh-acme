@@ -253,18 +253,18 @@ impl Handler for ConnectionHandler {
             Ok(CaResponse::Error(e)) => {
                 let error_message = format!("CA server error: {}", e);
                 error!("{}", &error_message);
-                false
+                None
             }
             Err(e) => {
                 let error_message = format!("Failed to send request to CA server: {}", e);
                 error!("{}", &error_message);
-                false
+                None
             }
             Ok(CaResponse::SignedCertificate(_)) => {
                 panic!("Key check reploed with signed cert, which must not happen")
             }
         };
-        if !key_found {
+        if key_found.is_none() {
             // key not in any config, reject host
             return Ok(Auth::Reject {
                 partial_success: false,
@@ -272,7 +272,7 @@ impl Handler for ConnectionHandler {
             });
         }
 
-        self.username = Some(user.to_string());
+        self.username = key_found;
         self.auth_method = Some(AuthMethod::PublicKey);
         self.public_key = Some(public_key.clone());
         Ok(Auth::Accept)

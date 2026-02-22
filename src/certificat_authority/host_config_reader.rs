@@ -42,7 +42,10 @@ pub fn read_host_config(host_name: &str, config: &config::Ca) -> Result<HostConf
     Ok(host_config)
 }
 
-pub fn find_config_by_public_key(public_key: &str, config: &config::Ca) -> Option<HostConfig> {
+pub fn find_config_by_public_key(
+    public_key: &str,
+    config: &config::Ca,
+) -> Option<(String, HostConfig)> {
     for file in glob(&format!(
         "{}/**/*.toml",
         config.host_inventory.to_str().unwrap()
@@ -79,7 +82,8 @@ pub fn find_config_by_public_key(public_key: &str, config: &config::Ca) -> Optio
                 "host for public key found: {}",
                 host_config.hostnames.first().unwrap()
             );
-            return Some(host_config);
+            let file_stem = file.file_stem().unwrap().to_str().unwrap().to_string();
+            return Some((file_stem, host_config));
         }
     }
     None

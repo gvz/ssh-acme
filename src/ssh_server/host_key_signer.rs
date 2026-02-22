@@ -127,6 +127,7 @@ pub async fn handle_sign_host_key(
 
     //send data back and close connection
     let _ = session.data(channel, openssh_cert.into());
+    let _ = session.exit_status_request(channel, 0);
     let _ = session.eof(channel);
     let _ = session.close(channel);
     Ok(())

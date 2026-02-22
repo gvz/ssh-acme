@@ -114,10 +114,10 @@ impl CertificateAuthority {
         Ok(cert)
     }
 
-    pub fn is_public_key_known(&self, public_key: &str) -> bool {
+    pub fn check_public_key(&self, public_key: &str) -> Option<String> {
         match host_config_reader::find_config_by_public_key(public_key, &self.config) {
-            Some(_) => true,
-            None => false,
+            Some((host_name, _)) => Some(host_name),
+            None => None,
         }
     }
 
@@ -145,7 +145,15 @@ impl CertificateAuthority {
             host_name
         );
         let host_config = host_config_reader::read_host_config(host_name, &self.config)?;
-        if &PublicKey::from_openssh(&host_config.public_key).unwrap() != public_key {
+        let config_pub_key = PublicKey::from_openssh(&host_config.public_key).map_err(|e| {
+            error!("Failed to parse config public key: {}", e);
+            CaError::WrongPublicKey(host_name.to_string())
+        })?;
+
+        if config_pub_key.key_data() != public_key.key_data() {
+            error!("Key Mismatch for host {}", host_name);
+            error!("Config Key: {}", config_pub_key.to_openssh().unwrap());
+            error!("Client Key: {}", public_key.to_openssh().unwrap());
             return Err(CaError::WrongPublicKey(host_name.to_string()).into());
         }
         let valid_after = std::time::SystemTime::now()
@@ -235,7 +243,7 @@ pub enum CaResponse {
     /// An error that occurred during processing.
     Error(String),
     /// is the key valid
-    KeyFound(bool),
+    KeyFound(Option<String>),
 }
 
 #[cfg(test)]

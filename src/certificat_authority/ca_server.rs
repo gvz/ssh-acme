@@ -98,10 +98,10 @@ impl CaServer {
                     }
                     Err(_) => {
                         debug!("public key ist not convertable to openssh");
-                        return Ok(CaResponse::KeyFound(false));
+                        return Ok(CaResponse::KeyFound(None));
                     }
                 };
-                Ok(CaResponse::KeyFound(self.ca.is_public_key_known(&str_key)))
+                Ok(CaResponse::KeyFound(self.ca.check_public_key(&str_key)))
             }
         }
     }
