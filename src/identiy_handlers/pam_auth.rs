@@ -41,6 +41,5 @@ pub fn pam_authenticate_user(user: &str, password: &str) -> Result<bool> {
     auth.conversation_mut().set_credentials(user, password);
 
     auth.authenticate()?;
-    auth.open_session()?;
     Ok(true)
 }
