@@ -42,6 +42,9 @@ pub fn read_host_config(host_name: &str, config: &config::Ca) -> Result<HostConf
     Ok(host_config)
 }
 
+/// Searches the host inventory for a configuration whose public key matches the given key.
+///
+/// Returns `Some((host_name, config))` if a match is found, or `None` otherwise.
 pub fn find_config_by_public_key(
     public_key: &str,
     config: &config::Ca,

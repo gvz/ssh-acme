@@ -5,7 +5,6 @@
 //! authentication methods (e.g., PAM).
 use anyhow::Result;
 
-
 use log::error;
 use serde::Deserialize;
 use thiserror::Error;
@@ -25,7 +24,6 @@ pub(crate) enum Error {
     /// The user is forbidden from logging in.
     #[error("user {0} is forbidden from logging in")]
     ForbiddenUser(String),
-    
 }
 
 /// A credential used for authentication.
@@ -34,8 +32,6 @@ pub(crate) enum Credential<'a> {
     /// A password credential.
     Password(&'a str),
 }
-
-
 
 /// A trait for authenticating users.
 pub(crate) trait UserAuthenticator: Send + Sync {

@@ -18,14 +18,19 @@ use ssh_key::{
 };
 use thiserror::Error;
 
+/// Client for communicating with the CA server over a Unix socket.
 pub mod ca_client;
+/// CA server that listens for signing requests on a Unix socket.
 pub mod ca_server;
+/// Configuration types for the Certificate Authority.
 pub mod config;
 mod host_config_reader;
 mod user_defaults_reader;
 
+/// Errors that can occur during CA operations.
 #[derive(Debug, Error)]
 pub enum CaError {
+    /// The public key presented by the host does not match the one in its configuration.
     #[error("wrong public key for host: {0}")]
     WrongPublicKey(String),
 }
@@ -114,6 +119,10 @@ impl CertificateAuthority {
         Ok(cert)
     }
 
+    /// Checks whether the given public key belongs to a known host.
+    ///
+    /// Returns `Some(host_name)` if a matching host configuration is found,
+    /// or `None` otherwise.
     pub fn check_public_key(&self, public_key: &str) -> Option<String> {
         match host_config_reader::find_config_by_public_key(public_key, &self.config) {
             Some((host_name, _)) => Some(host_name),
@@ -215,10 +224,12 @@ pub enum CaRequest {
         #[cfg_attr(feature = "arbitrary", arbitrary(with = arbitrary_public_key))]
         public_key: PublicKey,
     },
+    /// A request to check whether a public key belongs to a known host.
     CheckPublicKey {
         #[cfg_attr(feature = "arbitrary", arbitrary(with = arbitrary_public_key))]
         public_key: PublicKey,
     },
+    /// A request to sign a host certificate.
     SignHostCertificate {
         host_name: String,
         #[cfg_attr(feature = "arbitrary", arbitrary(with = arbitrary_public_key))]

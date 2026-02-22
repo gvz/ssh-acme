@@ -40,16 +40,19 @@ pub struct SshAcmeServer {
     user_authenticators: Vec<Box<dyn UserAuthenticator + Send + Sync>>,
 }
 
+/// The authentication method used by a client.
+pub enum AuthMethod {
+    /// Password-based authentication.
+    Password,
+    /// Public key-based authentication.
+    PublicKey,
+}
+
 /// A handler for a single client connection.
 ///
 /// This struct holds the state for a single client connection, including a
 /// reference to the main server, the username (once authenticated), and a
 /// unique ID for the connection.
-pub enum AuthMethod {
-    Password,
-    PublicKey,
-}
-
 pub struct ConnectionHandler {
     server: Arc<SshAcmeServer>,
     username: Option<String>,
@@ -232,6 +235,10 @@ impl Handler for ConnectionHandler {
     //) -> impl Future<Output = Result<Auth, Self::Error>> + Send {
     //}
 
+    /// Authenticates a user or host via public key.
+    ///
+    /// Accepts the connection if the presented public key is found in the CA's
+    /// host inventory. Russh verifies possession of the corresponding private key.
     async fn auth_publickey(
         &mut self,
         user: &str,
@@ -292,6 +299,7 @@ impl Handler for ConnectionHandler {
         Ok(true)
     }
 
+    /// Handles incoming channel data by delegating to the user key signing handler.
     async fn data(
         &mut self,
         channel: ChannelId,
@@ -302,6 +310,10 @@ impl Handler for ConnectionHandler {
         user_key_signer::handler_sign_user_key(self, channel, data, session).await
     }
 
+    /// Handles an exec request on the channel.
+    ///
+    /// Dispatches recognized commands (e.g. `sign_host_key`) to the appropriate
+    /// handler and disconnects the client for unknown commands.
     async fn exec_request(
         &mut self,
         channel: ChannelId,

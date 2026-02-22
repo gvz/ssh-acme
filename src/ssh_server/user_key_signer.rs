@@ -9,6 +9,11 @@ use crate::certificat_authority::key_from_openssh;
 use crate::certificat_authority::{CaRequest, CaResponse};
 use crate::ssh_server::{AuthMethod, ConnectionHandler};
 
+/// Handles a user key signing request.
+///
+/// Reads the public key from the channel data, sends it to the CA for signing,
+/// and returns the signed certificate to the client. Only password-authenticated
+/// users may request user certificates; public-key-authenticated clients are rejected.
 pub async fn handler_sign_user_key(
     handler: &mut ConnectionHandler,
     channel: ChannelId,

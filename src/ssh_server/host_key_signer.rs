@@ -14,6 +14,8 @@ use russh::server::Session;
 use std::sync::Arc;
 use tokio::sync::{Mutex, oneshot};
 
+/// An SSH client handler used to capture a remote server's public key during
+/// host key verification.
 pub struct ClientHandler {
     sender: Arc<Mutex<Option<oneshot::Sender<RusshPublicKey>>>>,
 }

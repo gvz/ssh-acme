@@ -74,6 +74,8 @@ impl CaServer {
         }
     }
 
+    /// Dispatches a [`CaRequest`] to the appropriate CA operation and returns
+    /// the resulting [`CaResponse`].
     pub fn handle_request(&self, request: CaRequest) -> Result<CaResponse> {
         match request {
             CaRequest::SignCertificate { user, public_key } => {

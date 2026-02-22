@@ -7,16 +7,32 @@ use minijinja::{Environment, context};
 use serde::Deserialize;
 use toml;
 
+/// Parsed certificate configuration from a Jinja-templated TOML file.
 #[derive(Deserialize, Debug)]
 pub struct CertificateConfig {
+    /// The certificate type (e.g. "user" or "host").
     pub cert_type: String,
+    /// A unique key identifier assigned by the CA.
     pub key_id: u64,
+    /// A list of principals (usernames or hostnames) for the certificate.
     pub principals: Vec<String>,
+    /// Extensions to include in the certificate (key-value pairs).
     pub extensions: HashMap<String, String>,
+    /// Critical options to include in the certificate (key-value pairs).
     pub critical_options: HashMap<String, String>,
+    /// The validity span of the certificate in hours.
     pub validity_span_h: u32,
 }
 
+/// Reads and parses a certificate configuration from a Jinja-templated TOML file.
+///
+/// # Arguments
+///
+/// * `file_path` - Path to the TOML template file.
+///
+/// # Returns
+///
+/// A `Result` containing the parsed [`CertificateConfig`] or an error.
 pub fn read_certificate_config(file_path: &str) -> Result<CertificateConfig> {
     let mut config_file = File::open(file_path)?;
     let mut config = String::new();

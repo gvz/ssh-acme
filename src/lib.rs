@@ -16,6 +16,7 @@ use crate::ssh_server::SshAcmeServer;
 
 mod identiy_handlers;
 
+/// Certificate Authority module providing CA core logic, server, client, and configuration.
 pub mod certificat_authority;
 
 use crate::certificat_authority::{CertificateAuthority, ca_client::CaClient, ca_server::CaServer};
