@@ -148,7 +148,7 @@
 
         checks = {
           cargo-tests = test_app;
-          nixos-test = import ./tests/nixos_test/test.nix {
+          end_to_end_test = import ./tests/end_to_end_test/test.nix {
             inherit nixpkgs;
             sshAcmeServerModule = sshAcmeServerModule;
           };

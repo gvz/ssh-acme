@@ -4,7 +4,7 @@ let
   test_utils_lib = ./test_utils.py;
 in
 pkgs.testers.nixosTest {
-  name = "ssh-acme-server-test";
+  name = "end-to-end_test";
   nodes = {
     CA = {
       # Import the module passed from the flake

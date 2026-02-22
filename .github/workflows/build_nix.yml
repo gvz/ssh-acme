@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@v2
       - uses: cachix/install-nix-action@v26
       - name: Building package
-        run: nix build ".#checks.x86_64-linux.nixos-test"
+        run: nix build ".#checks.x86_64-linux.end_to_end_test"
 
   nixos_integration_test:
     runs-on: ubuntu-latest
@@ -26,4 +26,4 @@ jobs:
       - uses: actions/checkout@v2
       - uses: cachix/install-nix-action@v26
       - name: Building package
-        run: nix build ".#checks.x86_64-linux.nixos-test"
+        run: nix build ".#checks.x86_64-linux.end_to_end_test"
