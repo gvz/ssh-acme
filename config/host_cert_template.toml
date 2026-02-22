@@ -1,7 +1,0 @@
-validity_in_days = 365
-hostnames = [
-    "{{host_name}}"
-]
-extensions = []
-
-[critical_options]
