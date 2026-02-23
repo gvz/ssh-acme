@@ -1,104 +1,192 @@
 # SSH Certificate Authority
 
-This project aims to provide a self-hosted SSH Certificate Authority (CA) similar to Let's Encrypt, but for SSH certificates. It allows users to obtain and manage SSH certificates for their machines, enhancing security by leveraging short-lived, automatically renewed certificates instead of long-lived SSH keys.
+This project provides a self-hosted SSH Certificate Authority (CA), similar in spirit to Let's Encrypt but for SSH certificates. Machines and users connect to this server over SSH to obtain short-lived, automatically renewable SSH certificates — replacing long-lived static keys.
 
 ## Features
 
-- **SSH Certificate Authority:** A built-in CA that signs SSH public keys into certificates.
-- **Pluggable Authentication:** Supports different authentication methods for users requesting certificates (currently PAM).
-- **Unix Socket Communication:** The SSH server communicates with the CA server via a Unix socket for secure and efficient inter-process communication.
-- **Configurable:** Easily configurable via TOML files for SSH server settings, CA settings, and user-specific certificate templates.
-- **Dynamic User Templates:** User certificate templates can be dynamically generated using Jinja2, allowing for flexible principal and extension management.
+- **SSH Certificate Authority:** A built-in CA that signs SSH public keys into user or host certificates.
+- **Pluggable Authentication:** Supports different authentication methods for users requesting certificates (currently PAM). `root` is explicitly blocked.
+- **Host Certificate Signing:** Hosts authenticate with their public key (verified against a pre-registered inventory) and receive a signed host certificate.
+- **Unix Socket IPC:** The SSH server and CA server communicate over a Unix socket for secure inter-process communication.
+- **Configurable:** Configured via TOML files for SSH server settings, CA settings, and per-user certificate templates.
+- **Dynamic User Templates:** User certificate templates are rendered with [MiniJinja](https://docs.rs/minijinja) (Jinja2-compatible), allowing flexible principal and extension management per user.
 
 ## Project Structure
 
-- `src/main.rs`: The main entry point of the application.
-- `src/lib.rs`: Contains the core logic, including command-line argument parsing and the `run_server` function that orchestrates the SSH and CA servers.
-- `src/certificat_authority/`:
-    - `mod.rs`: Defines the `CertificateAuthority` struct and its core logic for signing certificates.
-    - `ca_client.rs`: Implements the client-side communication with the CA server over a Unix socket.
-    - `ca_server.rs`: Implements the server-side logic for the CA, listening for signing requests.
-    - `config.rs`: Defines the configuration structure for the Certificate Authority.
-    - `user_defaults_reader.rs`: Handles reading and parsing user-specific certificate templates.
-- `src/config/`:
-    - `mod.rs`: Defines the main `Config` structure and handles reading the overall configuration file.
-- `src/identiy_handlers/`:
-    - `mod.rs`: Defines the `UserAuthenticator` trait and the `Credential` enum for pluggable authentication.
-    - `pam_auth.rs`: Provides a PAM-based user authenticator.
-- `src/ssh_server/`:
-    - `mod.rs`: Implements the SSH server logic, handling client connections, authentication, and certificate requests.
-    - `config.rs`: Defines the configuration structure for the SSH server.
-- `config/`: Example configuration files.
-- `test_data/`: Test data, including example keys and user certificate configurations.
+```
+src/
+├── main.rs                               # Entry point
+├── lib.rs                                # CLI argument parsing and server orchestration
+├── config/
+│   └── mod.rs                            # Top-level config struct and file reader
+├── certificat_authority/
+│   ├── mod.rs                            # CertificateAuthority struct; sign_certificate / sign_host_certificate
+│   ├── ca_client.rs                      # Unix socket client — sends requests to the CA server
+│   ├── ca_server.rs                      # Unix socket server — receives and dispatches signing requests
+│   ├── config.rs                         # CA configuration struct
+│   ├── user_defaults_reader.rs           # Reads and renders per-user certificate templates
+│   ├── host_config_reader.rs             # Reads host inventory TOML files; matches keys to hosts
+│   └── certificat_template_reader.rs     # Low-level Jinja-templated TOML config reader
+├── ssh_server/
+│   ├── mod.rs                            # SSH server, connection handler, auth dispatch
+│   ├── config.rs                         # SSH server configuration struct
+│   ├── user_key_signer.rs                # Handles user certificate signing requests (password auth flow)
+│   └── host_key_signer.rs                # Handles host certificate signing requests (public key auth flow)
+└── identiy_handlers/
+    ├── mod.rs                            # UserAuthenticator trait and authenticator setup
+    └── pam_auth.rs                       # PAM-based authenticator
+
+config/                                   # Example configuration files
+tests/                                    # Integration and end-to-end tests
+full_fuzz/                                # AFL++ fuzzing harness
+```
 
 ## Getting Started
 
 ### Prerequisites
 
-- Rust (latest stable version recommended)
-- `libpam-dev` (or equivalent for your Linux distribution) for PAM authentication.
+- **Rust** (latest stable) — or use the provided Nix dev shell (see below)
+- **libpam-dev** (or equivalent for your distribution) for PAM authentication
+
+#### Using the Nix dev shell (recommended)
+
+The repository ships a Nix flake. If you have Nix with flakes enabled:
+
+```bash
+nix develop
+```
+
+[direnv](https://direnv.net/) is also configured — `direnv allow` will activate the shell automatically.
 
 ### Building
 
-To build the project, navigate to the project root and run:
-
 ```bash
-cargo build
+cargo build --release
 ```
 
 ### Running
 
-The server can be run in two modes: as a combined SSH and CA server, or as a standalone CA server.
+The binary has two modes, controlled by CLI flags.
 
-#### Running as Combined SSH and CA Server
+#### Combined mode (default)
 
-This is the default mode. The SSH server will spawn the CA server as a child process and communicate with it via a Unix socket.
+Starts the SSH server and automatically spawns the CA server as a child process. The socket path is generated automatically in a temporary directory.
 
 ```bash
 cargo run -- -c config/config.toml
 ```
 
-#### Running as Standalone CA Server
+#### Standalone CA server
 
-You can run the CA server independently. This is useful for debugging or if you want to manage the CA process separately.
+Runs only the CA server, listening on the specified Unix socket. Useful for running the CA as a separate process or service.
 
 ```bash
-cargo run -- -c config/config.toml -a -s /tmp/ssh_acme_ca.sock
+cargo run -- -c config/config.toml --certificate-authority --socket-path /run/ssh_acme/ca.sock
 ```
 
-Replace `/tmp/ssh_acme_ca.sock` with your desired socket path.
+#### SSH server with an external CA
 
-### Configuration
+Run the SSH server without spawning its own CA process (e.g. when the CA is managed by a separate systemd unit):
 
-The main configuration file is `config/config.toml`. It defines:
+```bash
+cargo run -- -c config/config.toml --socket-path /run/ssh_acme/ca.sock --disable-ca
+```
 
-- `[ssh]`: SSH server binding address, port, and private key path.
-- `[ca]`: CA private key path, user list file, and default user template.
-- `[identity_handlers]`: List of enabled user authenticators (e.g., `["pam"]`).
+### CLI flags
 
-User-specific certificate templates are defined in TOML files and can use Jinja2 templating for dynamic values.
+| Flag                      | Short | Description                                                                 |
+|---------------------------|-------|-----------------------------------------------------------------------------|
+| `--config-file <PATH>`    | `-c`  | Path to the TOML configuration file (**required**)                          |
+| `--certificate-authority` | `-a`  | Run as a standalone CA server                                               |
+| `--socket-path <PATH>`    | `-s`  | Unix socket path for CA communication (auto-generated if omitted)           |
+| `--disable-ca`            |       | Start the SSH server without spawning a CA child process                    |
 
-## Internals
-### User Certification 
-1. A user logs into the project's ssh server via username and password
-2. the ssh server checks whether the user can authenticatate against one of the enabled identity handlers
-  1. if no identity handler accepts the user, the connection is closed. 
-  2. if one identity handler is accepted, the ssh server reads the public key form stdin
-3. the ssh server wraps the public key into a certificate request which is sent to the certificat authority (CA)
-4. the CA receives the certificate request depending to the user_certificate_defaults configuration if generates the certificate and signs it
-5. the certificate is sent to the ssh server
-6. the ssh server sends the certificate to the user
-### Host Certification 
-1. A host logs into the project's ssh server via hostname and the host's public key 
-2. To validate the public key, the ssh server tries to connects as a ssh client the provided hostname on port 22 and checks whether the same public key is provided. 
-  1. if the another public key is provided the signing process is aborted an all ssh connection are closed
-  2. if the same public key is provided the signing process continues
-     this is a proove of concet and needs to be improoved.
-3. the ssh server wraps the public key into a certificate request which is sent to the certificat authority (CA)
-4. the CA receives the certificate request depending to the host_certificate_defaults configuration if generates the certificate and signs it
-5. the certificate is sent to the ssh server
-6. the ssh server sends the certificate to the host
+## Configuration
+
+### Main config (`config/config.toml`)
+
+```toml
+[ssh]
+bind = "0.0.0.0"
+port = 2222
+private_key = "/etc/ssh/ssh_host_ed25519_key"
+# Optional: path to the server's own signed host certificate
+certificate = "/etc/ssh/ssh_host_ed25519_key-cert.pub"
+
+[ca]
+ca_key = "/etc/ssh_acme/ca_key"
+user_list_file = "/etc/ssh_acme/user.toml"
+default_user_template = "/etc/ssh_acme/user_default.toml"
+host_inventory = "/etc/ssh_acme/hosts/"
+
+[identity_handlers]
+user_authenticators = ["pam"]
+```
+
+Relative paths in `[ca]` are resolved relative to the directory containing the config file.
+
+### User list (`user_list_file`)
+
+Maps usernames to their certificate template files. Paths are relative to the user list file itself.
+
+```toml
+[users]
+alice = "./alice_template.toml"
+bob   = "./bob_template.toml"
+# Users not listed here receive the default_user_template
+```
+
+### User certificate template
+
+Templates are TOML files rendered with MiniJinja. The variable `user_name` holds the authenticated username.
+
+```toml
+validity_in_days = 7
+principals = ["{{ user_name }}"]
+extensions = [
+    "permit-pty",
+    "permit-agent-forwarding",
+    "permit-x11-forwarding",
+    "permit-user-rc",
+]
+```
+
+### Host inventory (`host_inventory`)
+
+One TOML file per host, named `<hostname>.toml`, placed in the `host_inventory` directory.
+
+```toml
+# config/hosts/webserver.toml
+public_key = "ssh-ed25519 AAAA..."
+validity_in_days = 365
+hostnames = ["webserver", "webserver.example.com"]
+extensions = []
+```
+
+## How It Works
+
+### User Certificate Flow
+
+1. A user connects to the SSH ACME server with their **username and password**.
+2. The server authenticates the user against the configured identity handlers (e.g. PAM). `root` is always rejected.
+3. On success, the user sends their **SSH public key** as channel data (stdin).
+4. The SSH server forwards a `SignCertificate` request to the CA server over the Unix socket.
+5. The CA looks up the user's certificate template (falling back to the default template), renders it, and signs the public key.
+6. The signed certificate is returned to the user over the same SSH channel.
+
+### Host Certificate Flow
+
+1. A host connects to the SSH ACME server using **public key authentication**, presenting its host public key.
+2. The server checks the CA's host inventory for a matching public key entry. If no match is found, the connection is rejected.
+3. The host sends the `sign_host_key` command over the exec channel.
+4. The SSH server forwards a `SignHostCertificate` request to the CA server.
+5. The CA verifies the public key against the host's inventory entry and signs it.
+6. The signed host certificate is returned to the host over the same SSH channel.
 
 ## Contributing
 
 Contributions are welcome! Please feel free to open issues or submit pull requests.
+
+## Disclaimer
+
+Parts of the code and documentation in this project were implemented with the assistance of AI tools.
