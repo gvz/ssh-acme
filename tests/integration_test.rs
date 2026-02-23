@@ -12,7 +12,7 @@ use tokio::time::sleep;
 
 use clap::Parser;
 use log::{debug, info};
-use ssh_acme_server::{CliArgs, run_server};
+use ssh_ca_server::{CliArgs, run_server};
 
 mod common;
 

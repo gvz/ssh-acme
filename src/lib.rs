@@ -1,6 +1,6 @@
-//! # SSH ACME Server
+//! # SSH Certificate Authority Server
 //!
-//! This crate provides the core functionality for the SSH ACME server.
+//! This crate provides the core functionality for the SSH Certificate Authority server.
 //! It includes the main server logic, command-line argument parsing,
 //! and the coordination between the SSH server and the Certificate Authority (CA).
 
@@ -12,7 +12,7 @@ use std::process::Command;
 use tempfile::tempdir;
 
 mod ssh_server;
-use crate::ssh_server::SshAcmeServer;
+use crate::ssh_server::SshCaServer;
 
 mod identiy_handlers;
 
@@ -23,7 +23,7 @@ use crate::certificat_authority::{CertificateAuthority, ca_client::CaClient, ca_
 
 mod config;
 
-/// Command-line arguments for the SSH ACME server.
+/// Command-line arguments for the SSH Certificate Authority server.
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 pub struct CliArgs {
@@ -41,7 +41,7 @@ pub struct CliArgs {
     disable_ca: bool,
 }
 
-/// Runs the SSH ACME server.
+/// Runs the SSH Certificate Authority server.
 ///
 /// This function initializes the logger, reads the configuration, and starts
 /// either the CA server or the SSH server based on the command-line arguments.
@@ -81,7 +81,7 @@ pub async fn run_server(args: CliArgs) {
             let socket_path = match args.socket_path {
                 Some(path) => path,
                 None => {
-                    let socket_name = format!("ssh_acme_ca.{}.sock", std::process::id());
+                    let socket_name = format!("ssh_ca.{}.sock", std::process::id());
                     let mut tmp_dir = tempdir().unwrap();
                     tmp_dir.disable_cleanup(true);
                     let mut socket_path = tmp_dir.path().to_path_buf();
@@ -136,7 +136,7 @@ pub async fn run_server(args: CliArgs) {
 
             let ca_client = CaClient::new(socket_path.clone());
 
-            let mut server = SshAcmeServer::new(config.ssh, ca_client, user_authenticators);
+            let mut server = SshCaServer::new(config.ssh, ca_client, user_authenticators);
             info!("starting server");
             server.run().await;
 

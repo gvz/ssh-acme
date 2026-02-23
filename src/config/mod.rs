@@ -12,7 +12,7 @@ use crate::certificat_authority::config::Ca;
 use crate::identiy_handlers::IndentityHanderConfig;
 use crate::ssh_server::config::SshServerConfig;
 
-/// The main configuration for the SSH ACME server.
+/// The main configuration for the SSH Certificate Authority server.
 #[derive(Deserialize, Debug)]
 pub struct Config {
     /// The SSH server configuration.

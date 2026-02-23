@@ -2,12 +2,12 @@ import subprocess
 import os
 
 def main():
-    # The ssh-acme-server binary should be in the PATH
-    server_path = os.environ.get("SSH_ACME_SERVER")
+    # The ssh-ca-server binary should be in the PATH
+    server_path = os.environ.get("SSH_CA_SERVER")
     if not server_path:
-        raise Exception("SSH_ACME_SERVER environment variable not set")
+        raise Exception("SSH_CA_SERVER environment variable not set")
 
-    server_process = subprocess.Popen([server_path, "-c", "/etc/ssh_acme/config.toml"])
+    server_process = subprocess.Popen([server_path, "-c", "/etc/ssh_ca/config.toml"])
 
     try:
         # Wait for the process to complete, or add other logic as needed

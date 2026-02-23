@@ -1,4 +1,4 @@
-{ nixpkgs, sshAcmeServerModule }:
+{ nixpkgs, sshCaServerModule }:
 let
   pkgs = import nixpkgs { system = "x86_64-linux"; };
   test_utils_lib = ./test_utils.py;
@@ -8,16 +8,16 @@ pkgs.testers.nixosTest {
   nodes = {
     CA = {
       # Import the module passed from the flake
-      imports = [ sshAcmeServerModule ];
+      imports = [ sshCaServerModule ];
 
       # Keep openssh for ssh-keygen
       environment.systemPackages = [ pkgs.openssh ];
 
       # Enable and configure the service
-      services.ssh-acme-server = {
+      services.ssh-ca-server = {
         enable = true;
         # Point the service to the config file copied by the test script
-        configFile = "/etc/ssh_acme/config.toml";
+        configFile = "/etc/ssh_ca/config.toml";
       };
       # open port 2222 in firewall
       networking.firewall.allowedTCPPorts = [ 2222 ];
@@ -104,7 +104,7 @@ pkgs.testers.nixosTest {
     Client.wait_for_unit("multi-user.target")
 
     # Copy config from host to VM
-    CA.copy_from_host("${./config}", "/etc/ssh_acme")
+    CA.copy_from_host("${./config}", "/etc/ssh_ca")
 
     # Generate CA key
     generate_ca_key(CA)
@@ -121,15 +121,15 @@ pkgs.testers.nixosTest {
     TestHost.execute("systemctl stop sshd",False)
 
     # start service
-    CA.succeed("systemctl restart ssh-acme-server")
-    CA.wait_for_unit("ssh-acme-server.service")
+    CA.succeed("systemctl restart ssh-ca-server")
+    CA.wait_for_unit("ssh-ca-server.service")
 
     # Verify that the service is indeed active
-    CA.succeed("systemctl is-active ssh-acme-server.service")
+    CA.succeed("systemctl is-active ssh-ca-server.service")
     time.sleep(1)
 
     # TODO: add ca to known hosts on temp host
-    test_key = CA.succeed("cat /etc/ssh_acme/hosts/testhost.toml")
+    test_key = CA.succeed("cat /etc/ssh_ca/hosts/testhost.toml")
     print(test_key)
 
     # Get TestHost's host key signed (using the NixOS-generated host key)
@@ -167,7 +167,7 @@ pkgs.testers.nixosTest {
     # Write the CA public key to TestHost for TrustedUserCAKeys.
     # We read the content and write it directly to avoid copy_between_hosts
     # creating a directory instead of a file.
-    ca_pubkey = CA.succeed("cat /etc/ssh_acme/ca_key.pub").strip()
+    ca_pubkey = CA.succeed("cat /etc/ssh_ca/ca_key.pub").strip()
     TestHost.succeed(f"echo '{ca_pubkey}' > /tmp/ca_key.pub")
 
     # Sync TestHost and Client clocks to match CA, so that certificates

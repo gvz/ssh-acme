@@ -1,5 +1,5 @@
 [package]
-name = "ssh_acme_server"
+name = "ssh_ca_server"
 version = "0.1.0"
 edition = "2024"
 

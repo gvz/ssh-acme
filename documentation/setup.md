@@ -1,6 +1,6 @@
 # Setup Guide
 
-This guide walks through building the SSH ACME server from source and running it on a Linux system.
+This guide walks through building the SSH Certificate Authority server from source and running it on a Linux system.
 
 ## Table of Contents
 
@@ -55,8 +55,8 @@ If you use [direnv](https://direnv.net/), run `direnv allow` once in the reposit
 ## 2. Get the source
 
 ```bash
-git clone https://github.com/your-org/ssh_acme_server.git
-cd ssh_acme_server
+git clone https://github.com/your-org/ssh_ca_server.git
+cd ssh_ca_server
 ```
 
 ---
@@ -67,11 +67,11 @@ cd ssh_acme_server
 cargo build --release
 ```
 
-The compiled binary is placed at `target/release/ssh_acme_server`.
+The compiled binary is placed at `target/release/ssh_ca_server`.
 
 Optionally, copy it to a system-wide location:
 ```bash
-sudo cp target/release/ssh_acme_server /usr/local/bin/ssh_acme_server
+sudo cp target/release/ssh_ca_server /usr/local/bin/ssh_ca_server
 ```
 
 ---
@@ -82,7 +82,7 @@ The server needs two separate keys:
 
 | Key | Purpose |
 |---|---|
-| **SSH host key** | Identifies the ACME server to connecting clients (standard SSH host key) |
+| **SSH host key** | Identifies the CA server to connecting clients (standard SSH host key) |
 | **CA signing key** | Signs user and host certificates issued by this CA |
 
 ### SSH host key
@@ -90,36 +90,36 @@ The server needs two separate keys:
 If the server will run as a dedicated service user, generate the host key in a suitable location:
 
 ```bash
-sudo mkdir -p /etc/ssh_acme
-sudo ssh-keygen -t ed25519 -f /etc/ssh/ssh_acme_host_ed25519_key -N "" -C "ssh_acme_host"
+sudo mkdir -p /etc/ssh_ca
+sudo ssh-keygen -t ed25519 -f /etc/ssh/ssh_ca_host_ed25519_key -N "" -C "ssh_ca_host"
 ```
 
 ### CA signing key
 
 ```bash
-sudo ssh-keygen -t ed25519 -f /etc/ssh_acme/ca_key -N "" -C "ssh_acme_ca"
+sudo ssh-keygen -t ed25519 -f /etc/ssh_ca/ca_key -N "" -C "ssh_ca"
 ```
 
 > **Security:** The CA private key (`ca_key`) must be readable only by the user running the server. Keep it off shared or world-readable filesystems.
 
 ```bash
-sudo chmod 600 /etc/ssh_acme/ca_key
+sudo chmod 600 /etc/ssh_ca/ca_key
 ```
 
 ### (Optional) Sign the server's own host key
 
-If you want clients to trust the ACME server's host key via the CA (instead of TOFU), sign it:
+If you want clients to trust the CA server's host key via the CA (instead of TOFU), sign it:
 
 ```bash
-sudo ssh-keygen -s /etc/ssh_acme/ca_key \
+sudo ssh-keygen -s /etc/ssh_ca/ca_key \
     -h \
-    -I "ssh_acme_server" \
-    -n "ssh_acme_server" \
+    -I "ssh_ca_server" \
+    -n "ssh_ca_server" \
     -V +3650d \
-    /etc/ssh/ssh_acme_host_ed25519_key.pub
+    /etc/ssh/ssh_ca_host_ed25519_key.pub
 ```
 
-This produces `/etc/ssh/ssh_acme_host_ed25519_key-cert.pub`. Set the `certificate` field in `[ssh]` to use it (see [Section 5](#5-create-the-configuration)).
+This produces `/etc/ssh/ssh_ca_host_ed25519_key-cert.pub`. Set the `certificate` field in `[ssh]` to use it (see [Section 5](#5-create-the-configuration)).
 
 ---
 
@@ -128,26 +128,26 @@ This produces `/etc/ssh/ssh_acme_host_ed25519_key-cert.pub`. Set the `certificat
 Create the directory layout:
 
 ```bash
-sudo mkdir -p /etc/ssh_acme/hosts
+sudo mkdir -p /etc/ssh_ca/hosts
 ```
 
 ### Main config file
 
-Create `/etc/ssh_acme/config.toml`:
+Create `/etc/ssh_ca/config.toml`:
 
 ```toml
 [ssh]
 bind = "0.0.0.0"
 port = 2222
-private_key = "/etc/ssh/ssh_acme_host_ed25519_key"
+private_key = "/etc/ssh/ssh_ca_host_ed25519_key"
 # Remove or comment out the line below if you did not sign the host key in step 4
-certificate = "/etc/ssh/ssh_acme_host_ed25519_key-cert.pub"
+certificate = "/etc/ssh/ssh_ca_host_ed25519_key-cert.pub"
 
 [ca]
-ca_key             = "/etc/ssh_acme/ca_key"
-user_list_file     = "/etc/ssh_acme/user.toml"
-default_user_template = "/etc/ssh_acme/user_default.toml"
-host_inventory     = "/etc/ssh_acme/hosts/"
+ca_key             = "/etc/ssh_ca/ca_key"
+user_list_file     = "/etc/ssh_ca/user.toml"
+default_user_template = "/etc/ssh_ca/user_default.toml"
+host_inventory     = "/etc/ssh_ca/hosts/"
 
 [identity_handlers]
 user_authenticators = ["pam"]
@@ -155,7 +155,7 @@ user_authenticators = ["pam"]
 
 ### User list
 
-Create `/etc/ssh_acme/user.toml`. List every user who is allowed to request a certificate and point to their template file. Users not listed here receive the default template.
+Create `/etc/ssh_ca/user.toml`. List every user who is allowed to request a certificate and point to their template file. Users not listed here receive the default template.
 
 ```toml
 [users]
@@ -163,11 +163,11 @@ alice = "./alice.toml"
 bob   = "./bob.toml"
 ```
 
-Paths are relative to the directory containing `user.toml` (i.e. `/etc/ssh_acme/`).
+Paths are relative to the directory containing `user.toml` (i.e. `/etc/ssh_ca/`).
 
 ### Default user certificate template
 
-Create `/etc/ssh_acme/user_default.toml`. The variable `user_name` is substituted with the authenticated username at signing time.
+Create `/etc/ssh_ca/user_default.toml`. The variable `user_name` is substituted with the authenticated username at signing time.
 
 ```toml
 validity_in_days = 7
@@ -182,7 +182,7 @@ extensions = [
 
 ### Per-user certificate template (optional)
 
-Create `/etc/ssh_acme/alice.toml` to override the defaults for a specific user:
+Create `/etc/ssh_ca/alice.toml` to override the defaults for a specific user:
 
 ```toml
 validity_in_days = 1
@@ -195,7 +195,7 @@ extensions = [
 
 ### Host inventory entry
 
-For each host that should receive a signed host certificate, create a TOML file in `/etc/ssh_acme/hosts/` named after the hostname.
+For each host that should receive a signed host certificate, create a TOML file in `/etc/ssh_ca/hosts/` named after the hostname.
 
 First, obtain the host's public key:
 ```bash
@@ -203,10 +203,10 @@ First, obtain the host's public key:
 cat /etc/ssh/ssh_host_ed25519_key.pub
 ```
 
-Then create `/etc/ssh_acme/hosts/<hostname>.toml` on the ACME server, replacing `<PUBLIC_KEY>` with the output above:
+Then create `/etc/ssh_ca/hosts/<hostname>.toml` on the CA server, replacing `<PUBLIC_KEY>` with the output above:
 
 ```toml
-# /etc/ssh_acme/hosts/webserver.toml
+# /etc/ssh_ca/hosts/webserver.toml
 public_key       = "ssh-ed25519 AAAA<...rest of key...>"
 validity_in_days = 365
 hostnames        = ["webserver", "webserver.example.com"]
@@ -230,15 +230,15 @@ The server authenticates users via PAM using the `login` service. On most distri
 ### Foreground (for testing)
 
 ```bash
-RUST_LOG=info ssh_acme_server -c /etc/ssh_acme/config.toml
+RUST_LOG=info ssh_ca_server -c /etc/ssh_ca/config.toml
 ```
 
 The server starts on the configured port (default `2222`) and automatically spawns the CA as a child process. You should see log lines similar to:
 
 ```
-[INFO  ssh_acme_server] spawned CA
-[INFO  ssh_acme_server::ssh_server] starting ssh server at 0.0.0.0:2222
-[INFO  ssh_acme_server::certificat_authority::ca_server] CA server listening on /tmp/...
+[INFO  ssh_ca_server] spawned CA
+[INFO  ssh_ca_server::ssh_server] starting ssh server at 0.0.0.0:2222
+[INFO  ssh_ca_server::certificat_authority::ca_server] CA server listening on /tmp/...
 ```
 
 Press `Ctrl-C` to stop. The CA child process and socket file are cleaned up automatically.
@@ -248,18 +248,18 @@ Press `Ctrl-C` to stop. The CA child process and socket file are cleaned up auto
 Start the CA server first, pointing it at a fixed socket path:
 
 ```bash
-RUST_LOG=info ssh_acme_server \
-    -c /etc/ssh_acme/config.toml \
+RUST_LOG=info ssh_ca_server \
+    -c /etc/ssh_ca/config.toml \
     --certificate-authority \
-    --socket-path /run/ssh_acme/ca.sock
+    --socket-path /run/ssh_ca/ca.sock
 ```
 
 Then start the SSH server, telling it not to spawn its own CA:
 
 ```bash
-RUST_LOG=info ssh_acme_server \
-    -c /etc/ssh_acme/config.toml \
-    --socket-path /run/ssh_acme/ca.sock \
+RUST_LOG=info ssh_ca_server \
+    -c /etc/ssh_ca/config.toml \
+    --socket-path /run/ssh_ca/ca.sock \
     --disable-ca
 ```
 
@@ -267,7 +267,7 @@ RUST_LOG=info ssh_acme_server \
 
 ## 8. Run as a systemd service
 
-Create `/etc/systemd/system/ssh-acme-server.service`:
+Create `/etc/systemd/system/ssh-ca-server.service`:
 
 ```ini
 [Unit]
@@ -276,7 +276,7 @@ After=network.target
 
 [Service]
 Environment=RUST_LOG=info
-ExecStart=/usr/local/bin/ssh_acme_server -c /etc/ssh_acme/config.toml
+ExecStart=/usr/local/bin/ssh_ca_server -c /etc/ssh_ca/config.toml
 Restart=on-failure
 
 [Install]
@@ -287,14 +287,14 @@ Enable and start the service:
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable --now ssh-acme-server.service
-sudo systemctl status ssh-acme-server.service
+sudo systemctl enable --now ssh-ca-server.service
+sudo systemctl status ssh-ca-server.service
 ```
 
 Check logs:
 
 ```bash
-journalctl -u ssh-acme-server.service -f
+journalctl -u ssh-ca-server.service -f
 ```
 
 ---
@@ -304,14 +304,14 @@ journalctl -u ssh-acme-server.service -f
 Clients must be told to trust certificates signed by this CA. Add the following line to `/etc/ssh/ssh_known_hosts` (system-wide) or `~/.ssh/known_hosts` (per user) on each client machine:
 
 ```
-@cert-authority * <contents of /etc/ssh_acme/ca_key.pub>
+@cert-authority * <contents of /etc/ssh_ca/ca_key.pub>
 ```
 
 Example — copy the CA public key from the server and install it on a client:
 
 ```bash
-# On the ACME server
-cat /etc/ssh_acme/ca_key.pub
+# On the CA server
+cat /etc/ssh_ca/ca_key.pub
 
 # On the client — append to the system known_hosts
 echo "@cert-authority * $(cat ca_key.pub)" | sudo tee -a /etc/ssh/ssh_known_hosts
@@ -325,7 +325,7 @@ A user authenticates with their username and password, sends their public key as
 
 ```bash
 # On the client machine
-ssh -p 2222 alice@acme-server.example.com < ~/.ssh/id_ed25519.pub > ~/.ssh/id_ed25519-cert.pub
+ssh -p 2222 alice@ca-server.example.com < ~/.ssh/id_ed25519.pub > ~/.ssh/id_ed25519-cert.pub
 ```
 
 Verify the certificate:
@@ -352,7 +352,7 @@ A host authenticates with its own host public key and runs the `sign_host_key` c
 # Run this on the host machine that wants a signed host certificate
 ssh -i /etc/ssh/ssh_host_ed25519_key \
     -p 2222 \
-    webserver@acme-server.example.com \
+    webserver@ca-server.example.com \
     sign_host_key \
     > /etc/ssh/ssh_host_ed25519_key-cert.pub
 ```
