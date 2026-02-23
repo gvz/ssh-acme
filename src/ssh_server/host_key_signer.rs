@@ -20,21 +20,6 @@ pub struct ClientHandler {
     sender: Arc<Mutex<Option<oneshot::Sender<RusshPublicKey>>>>,
 }
 
-impl russh::client::Handler for ClientHandler {
-    type Error = russh::Error;
-
-    async fn check_server_key(
-        &mut self,
-        server_public_key: &RusshPublicKey,
-    ) -> Result<bool, Self::Error> {
-        let sender_option = self.sender.lock().await.take();
-        if let Some(sender) = sender_option {
-            let _ = sender.send(server_public_key.clone());
-        }
-        Ok(true)
-    }
-}
-
 /// Handles the `sign_host_key` command.
 ///
 /// This function takes the public key from the command arguments, sends it to the CA to be signed,
@@ -68,16 +53,6 @@ pub async fn handle_sign_host_key(
             return Ok(());
         }
         Ok(key) => key,
-    };
-
-    // Convert ssh_key::PublicKey to russh::keys::PublicKey for comparison
-    let public_key_russh = RusshPublicKey::from_openssh(&public_key.to_openssh().unwrap()).unwrap();
-
-    // Proof of concept: Connect to the host and verify the public key
-    let (sender, receiver) = oneshot::channel();
-    let client_config = Config::default();
-    let sh = ClientHandler {
-        sender: Arc::new(tokio::sync::Mutex::new(Some(sender))),
     };
 
     #[cfg(feature = "test_auth")]
