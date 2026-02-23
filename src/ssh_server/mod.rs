@@ -1,4 +1,4 @@
-//! # SSH ACME Server
+//! # SSH Certificate Authority Server
 //!
 //! This module provides the core SSH server implementation.
 //! It handles client connections, authentication, and the process of
@@ -27,12 +27,12 @@ pub(crate) mod host_key_signer;
 pub(crate) mod user_key_signer;
 use config::SshServerConfig;
 
-/// The main SSH ACME server struct.
+/// The main SSH Certificate Authority server struct.
 ///
 /// This struct holds the state for the SSH server, including connected clients,
 /// the CA client, the server configuration, and the list of user authenticators.
 #[derive(Clone)]
-pub struct SshAcmeServer {
+pub struct SshCaServer {
     clients: Arc<Mutex<HashMap<usize, (ChannelId, russh::server::Handle)>>>,
     client_ids: usize,
     ca_client: CaClient,
@@ -54,15 +54,15 @@ pub enum AuthMethod {
 /// reference to the main server, the username (once authenticated), and a
 /// unique ID for the connection.
 pub struct ConnectionHandler {
-    server: Arc<SshAcmeServer>,
+    server: Arc<SshCaServer>,
     username: Option<String>,
     id: usize,
     auth_method: Option<AuthMethod>,
     public_key: Option<PublicKey>,
 }
 
-impl SshAcmeServer {
-    /// Creates a new `SshAcmeServer`.
+impl SshCaServer {
+    /// Creates a new `SshCaServer`.
     ///
     /// # Arguments
     ///
@@ -74,7 +74,7 @@ impl SshAcmeServer {
         ca_client: CaClient,
         user_authenticators: Vec<Box<dyn UserAuthenticator + Send + Sync>>,
     ) -> Self {
-        SshAcmeServer {
+        SshCaServer {
             clients: Arc::new(Mutex::new(HashMap::new())),
             client_ids: 0,
             ca_client,
@@ -150,7 +150,7 @@ impl SshAcmeServer {
     }
 }
 
-impl Server for SshAcmeServer {
+impl Server for SshCaServer {
     type Handler = ConnectionHandler;
 
     /// Creates a new `ConnectionHandler` for a new client connection.

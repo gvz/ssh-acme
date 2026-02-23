@@ -10,10 +10,10 @@ use ssh_key::{Algorithm, Certificate, private::PrivateKey};
 use tempfile::tempdir;
 use tokio::runtime::Runtime;
 
-use ssh_acme_server::certificat_authority::CaRequest;
-use ssh_acme_server::certificat_authority::CertificateAuthority;
-use ssh_acme_server::certificat_authority::ca_server::CaServer;
-use ssh_acme_server::certificat_authority::config::Ca as CaConfig;
+use ssh_ca_server::certificat_authority::CaRequest;
+use ssh_ca_server::certificat_authority::CertificateAuthority;
+use ssh_ca_server::certificat_authority::ca_server::CaServer;
+use ssh_ca_server::certificat_authority::config::Ca as CaConfig;
 
 fn main() {
     let ca = setup_ca();

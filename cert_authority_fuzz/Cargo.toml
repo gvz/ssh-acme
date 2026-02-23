@@ -11,6 +11,6 @@ tempfile = "3.20.0"
 tokio = {version="1.45.1",features=["full"]}
 arbitrary = {version="1.4.2", features = ["derive"]}
 
-[dependencies.ssh_acme_server]
+[dependencies.ssh_ca_server]
 path = ".."
 features = ["arbitrary"]

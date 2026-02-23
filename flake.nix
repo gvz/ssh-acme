@@ -26,7 +26,7 @@
 
         # The package containing your application binary
         common = {
-          pname = "ssh_acme_server";
+          pname = "ssh_ca_server";
           version = "0.1.0"; # You can manage this version as you see fit
 
           release = true;
@@ -62,42 +62,42 @@
           }
         );
         # The NixOS module that provides the systemd service
-        sshAcmeServerModule =
+        sshCaServerModule =
           { config, ... }:
           {
-            options.services.ssh-acme-server = {
-              enable = lib.mkEnableOption "ssh-acme-server";
+            options.services.ssh-ca-server = {
+              enable = lib.mkEnableOption "ssh-ca-server";
 
               configFile = lib.mkOption {
                 type = lib.types.path;
-                default = "/etc/ssh_acme_server/config.toml";
-                description = "Path to the ssh-acme-server configuration file.";
+                default = "/etc/ssh_ca_server/config.toml";
+                description = "Path to the ssh-ca-server configuration file.";
               };
 
               dataDir = lib.mkOption {
                 type = lib.types.path;
-                default = "/var/lib/ssh-acme-server";
-                description = "The data directory for the ssh-acme-server.";
+                default = "/var/lib/ssh-ca-server";
+                description = "The data directory for the ssh-ca-server.";
               };
             };
 
-            config = lib.mkIf config.services.ssh-acme-server.enable {
+            config = lib.mkIf config.services.ssh-ca-server.enable {
               # Create a dedicated user for the service
 
-              systemd.services.ssh-acme-server = {
-                description = "SSH ACME Server";
+              systemd.services.ssh-ca-server = {
+                description = "SSH Certificate Authority Server";
                 wantedBy = [ "multi-user.target" ];
                 after = [ "network.target" ];
 
                 serviceConfig = {
                   Environment = "RUST_LOG=debug";
                   ExecStart = ''
-                    ${app}/bin/ssh_acme_server -c ${config.services.ssh-acme-server.configFile}
+                    ${app}/bin/ssh_ca_server -c ${config.services.ssh-ca-server.configFile}
                   '';
 
                   Restart = "no";
-                  # Creates /var/lib/ssh-acme-server with correct ownership
-                  StateDirectory = "ssh-acme-server";
+                  # Creates /var/lib/ssh-ca-server with correct ownership
+                  StateDirectory = "ssh-ca-server";
                 };
               };
             };
@@ -144,13 +144,13 @@
             RUST_SRC_PATH = rustPlatform.rustLibSrc;
           };
 
-        nixosModules.default = sshAcmeServerModule;
+        nixosModules.default = sshCaServerModule;
 
         checks = {
           cargo-tests = test_app;
           end_to_end_test = import ./tests/end_to_end_test/test.nix {
             inherit nixpkgs;
-            sshAcmeServerModule = sshAcmeServerModule;
+            sshCaServerModule = sshCaServerModule;
           };
         };
       }

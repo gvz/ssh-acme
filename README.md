@@ -81,7 +81,7 @@ cargo run -- -c config/config.toml
 Runs only the CA server, listening on the specified Unix socket. Useful for running the CA as a separate process or service.
 
 ```bash
-cargo run -- -c config/config.toml --certificate-authority --socket-path /run/ssh_acme/ca.sock
+cargo run -- -c config/config.toml --certificate-authority --socket-path /run/ssh_ca/ca.sock
 ```
 
 #### SSH server with an external CA
@@ -89,7 +89,7 @@ cargo run -- -c config/config.toml --certificate-authority --socket-path /run/ss
 Run the SSH server without spawning its own CA process (e.g. when the CA is managed by a separate systemd unit):
 
 ```bash
-cargo run -- -c config/config.toml --socket-path /run/ssh_acme/ca.sock --disable-ca
+cargo run -- -c config/config.toml --socket-path /run/ssh_ca/ca.sock --disable-ca
 ```
 
 ### CLI flags
@@ -114,10 +114,10 @@ private_key = "/etc/ssh/ssh_host_ed25519_key"
 certificate = "/etc/ssh/ssh_host_ed25519_key-cert.pub"
 
 [ca]
-ca_key = "/etc/ssh_acme/ca_key"
-user_list_file = "/etc/ssh_acme/user.toml"
-default_user_template = "/etc/ssh_acme/user_default.toml"
-host_inventory = "/etc/ssh_acme/hosts/"
+ca_key = "/etc/ssh_ca/ca_key"
+user_list_file = "/etc/ssh_ca/user.toml"
+default_user_template = "/etc/ssh_ca/user_default.toml"
+host_inventory = "/etc/ssh_ca/hosts/"
 
 [identity_handlers]
 user_authenticators = ["pam"]
@@ -167,7 +167,7 @@ extensions = []
 
 ### User Certificate Flow
 
-1. A user connects to the SSH ACME server with their **username and password**.
+1. A user connects to the SSH Certificate Authority server with their **username and password**.
 2. The server authenticates the user against the configured identity handlers (e.g. PAM). `root` is always rejected.
 3. On success, the user sends their **SSH public key** as channel data (stdin).
 4. The SSH server forwards a `SignCertificate` request to the CA server over the Unix socket.
@@ -176,7 +176,7 @@ extensions = []
 
 ### Host Certificate Flow
 
-1. A host connects to the SSH ACME server using **public key authentication**, presenting its host public key.
+1. A host connects to the SSH Certificate Authority server using **public key authentication**, presenting its host public key.
 2. The server checks the CA's host inventory for a matching public key entry. If no match is found, the connection is rejected.
 3. The host sends the `sign_host_key` command over the exec channel.
 4. The SSH server forwards a `SignHostCertificate` request to the CA server.
