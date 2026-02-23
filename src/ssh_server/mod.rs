@@ -12,7 +12,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use log::{debug, error, info, warn};
 use russh::{
-    Channel, ChannelId,
+    Channel, ChannelId, Error,
     keys::PublicKey,
     server::{Auth, Handler, Msg, Server, Session},
 };
@@ -323,8 +323,15 @@ impl Handler for ConnectionHandler {
         let command = String::from_utf8_lossy(data);
         let mut parts = command.split_whitespace();
         let command_name = parts.next().unwrap_or("");
-        let pub_key = self.public_key.clone().unwrap().to_openssh().unwrap();
-        let hostname = self.username.clone().unwrap();
+        let pub_key = match self.public_key.clone() {
+            None => return Err(Error::RequestDenied),
+            Some(pubkey) => pubkey.to_openssh()?,
+        };
+
+        let hostname = match self.username.clone() {
+            Some(hostname) => hostname,
+            None => return Err(Error::RequestDenied),
+        };
         let args: Vec<&str> = vec![&hostname, &pub_key];
 
         match command_name {
