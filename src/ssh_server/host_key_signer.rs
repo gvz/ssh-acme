@@ -44,6 +44,22 @@ pub async fn handle_sign_host_key(
         return Ok(());
     }
     let host_name = args[0].to_string();
+
+    // Early validation: reject hostnames containing path traversal characters
+    // before they reach the CA. This is defense in depth — the CA also validates
+    // that resolved paths stay within the inventory directory.
+    if host_name.is_empty()
+        || host_name.contains('/')
+        || host_name.contains('\\')
+        || host_name.contains("..")
+        || host_name.contains('\0')
+    {
+        let error_message = format!("invalid host name: '{}'", host_name);
+        error!("{}", &error_message);
+        let _ = session.disconnect(russh::Disconnect::ByApplication, &error_message, "en");
+        return Ok(());
+    }
+
     let ssh_key = args[1..].join(" ");
     let public_key = match crate::certificat_authority::key_from_openssh(&ssh_key) {
         Err(e) => {

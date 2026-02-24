@@ -4,13 +4,44 @@
 
 use std::fs::File;
 use std::io::Read;
+use std::path::Path;
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use glob::glob;
 use log::{debug, error, warn};
 use serde::Deserialize;
 
 use crate::certificat_authority::config;
+
+/// Verifies that `candidate` is contained within `base_dir` after canonicalization.
+///
+/// Both paths are canonicalized to resolve symlinks and `..` components, then
+/// `candidate` is checked to be a child of `base_dir`. Returns an error if
+/// canonicalization fails or the candidate escapes the base directory.
+fn ensure_path_within_directory(candidate: &Path, base_dir: &Path) -> Result<std::path::PathBuf> {
+    let canonical_base = base_dir.canonicalize().map_err(|e| {
+        error!(
+            "failed to canonicalize base directory {:?}: {}",
+            base_dir, e
+        );
+        anyhow!("failed to resolve inventory directory: {}", e)
+    })?;
+    let canonical_candidate = candidate.canonicalize().map_err(|e| {
+        error!(
+            "failed to canonicalize candidate path {:?}: {}",
+            candidate, e
+        );
+        anyhow!("failed to resolve host config path: {}", e)
+    })?;
+    if !canonical_candidate.starts_with(&canonical_base) {
+        error!(
+            "path traversal detected: {:?} is not within {:?}",
+            canonical_candidate, canonical_base
+        );
+        return Err(anyhow!("path traversal detected in host name"));
+    }
+    Ok(canonical_candidate)
+}
 
 /// Represents the host-specific certificate parameters.
 #[derive(Deserialize, Debug)]
@@ -38,7 +69,11 @@ pub struct HostConfig {
 pub fn read_host_config(host_name: &str, config: &config::Ca) -> Result<HostConfig> {
     let mut host_inventory_path = config.host_inventory.clone();
     host_inventory_path.push(format!("{}.toml", host_name));
-    let host_config = read_config(host_inventory_path.to_str().unwrap())?;
+
+    // Verify the resolved path stays within the host inventory directory
+    let safe_path = ensure_path_within_directory(&host_inventory_path, &config.host_inventory)?;
+
+    let host_config = read_config(safe_path.to_str().unwrap())?;
     Ok(host_config)
 }
 
@@ -49,13 +84,41 @@ pub fn find_config_by_public_key(
     public_key: &str,
     config: &config::Ca,
 ) -> Option<(String, HostConfig)> {
+    // Canonicalize the inventory path before constructing the glob pattern
+    // to prevent unsanitized config paths from affecting glob behavior
+    let canonical_inventory = match config.host_inventory.canonicalize() {
+        Ok(p) => p,
+        Err(e) => {
+            error!(
+                "failed to canonicalize host inventory path {:?}: {}",
+                config.host_inventory, e
+            );
+            return None;
+        }
+    };
     for file in glob(&format!(
         "{}/**/*.toml",
-        config.host_inventory.to_str().unwrap()
+        canonical_inventory.to_str().unwrap()
     ))
     .unwrap()
     .flatten()
     {
+        // Verify each glob result stays within the inventory directory
+        // (defense against symlink attacks within the inventory)
+        let canonical_file = match file.canonicalize() {
+            Ok(p) => p,
+            Err(e) => {
+                warn!("skipping unresolvable path {:?}: {}", file, e);
+                continue;
+            }
+        };
+        if !canonical_file.starts_with(&canonical_inventory) {
+            warn!(
+                "skipping file outside inventory directory: {:?}",
+                canonical_file
+            );
+            continue;
+        }
         debug!("checking for public key in {}", file.to_str().unwrap());
         let host_config = match read_config(file.to_str().unwrap()) {
             Err(e) => {
