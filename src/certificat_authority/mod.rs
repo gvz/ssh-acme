@@ -17,6 +17,7 @@ use ssh_key::{
     private::PrivateKey,
 };
 use thiserror::Error;
+use zeroize::Zeroizing;
 
 /// Client for communicating with the CA server over a Unix socket.
 pub mod ca_client;
@@ -36,7 +37,6 @@ pub enum CaError {
 }
 
 /// Represents the Certificate Authority.
-#[derive(Clone)]
 pub struct CertificateAuthority {
     private_key: PrivateKey,
     config: config::Ca,
@@ -54,7 +54,7 @@ impl CertificateAuthority {
     /// A `Result` containing the new `CertificateAuthority` instance or an error.
     pub fn new(ca_config: &config::Ca) -> Result<Self> {
         let mut key_file = File::open(ca_config.ca_key.clone())?;
-        let mut key_buffer: Vec<u8> = Vec::new();
+        let mut key_buffer = Zeroizing::new(Vec::new());
         key_file.read_to_end(&mut key_buffer)?;
 
         let private_key = PrivateKey::from_openssh(key_buffer)?;
