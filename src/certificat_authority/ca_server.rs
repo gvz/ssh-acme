@@ -5,6 +5,7 @@
 use anyhow::Result;
 use log::{debug, error, info};
 use std::fs;
+use std::os::unix::fs::PermissionsExt;
 use tokio::net::UnixListener;
 
 use super::{CaRequest, CaResponse, CertificateAuthority};
@@ -37,11 +38,33 @@ impl CaServer {
         }
 
         let listener = UnixListener::bind(&self.socket_path)?;
+        // Restrict socket permissions to owner-only (0o600) to prevent
+        // other local users from connecting to the CA service.
+        fs::set_permissions(&self.socket_path, fs::Permissions::from_mode(0o600))?;
+        let server_uid = nix::unistd::getuid();
         info!("CA server listening on {}", self.socket_path);
         loop {
             match listener.accept().await {
                 Ok((stream, _addr)) => {
                     debug!("New connection to CA server");
+                    // Verify the connecting process belongs to the same user
+                    // as the CA server (SO_PEERCRED check).
+                    match stream.peer_cred() {
+                        Ok(cred) => {
+                            if cred.uid() != server_uid.as_raw() {
+                                error!(
+                                    "Rejected CA connection from UID {}, expected {}",
+                                    cred.uid(),
+                                    server_uid
+                                );
+                                continue;
+                            }
+                        }
+                        Err(e) => {
+                            error!("Failed to get peer credentials: {}", e);
+                            continue;
+                        }
+                    }
                     stream.readable().await.unwrap();
                     let mut buf = Vec::with_capacity(4096);
                     if let Err(e) = stream.try_read_buf(&mut buf) {
