@@ -102,7 +102,7 @@ impl SshCaServer {
         let ssh_config = match &self.config.certificate {
             // build ssh server config to use public key
             None => russh::server::Config {
-                inactivity_timeout: Some(std::time::Duration::from_secs(3600)),
+                inactivity_timeout: Some(std::time::Duration::from_secs(5)),
                 auth_rejection_time: std::time::Duration::from_secs(3),
                 auth_rejection_time_initial: Some(std::time::Duration::from_secs(0)),
                 max_auth_attempts: 1,
@@ -124,7 +124,7 @@ impl SshCaServer {
                     panic!("failed")
                 });
                 russh::server::Config {
-                    inactivity_timeout: Some(std::time::Duration::from_secs(3600)),
+                    inactivity_timeout: Some(std::time::Duration::from_secs(5)),
                     auth_rejection_time: std::time::Duration::from_secs(3),
                     auth_rejection_time_initial: Some(std::time::Duration::from_secs(0)),
                     max_auth_attempts: 1,
