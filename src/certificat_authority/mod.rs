@@ -10,7 +10,7 @@ use anyhow::Result;
 use arbitrary::{Arbitrary, Unstructured};
 use log::{debug, error, info};
 use serde::{Deserialize, Serialize};
-use ssh_key::rand_core::OsRng;
+use ssh_key::rand_core::{OsRng, RngCore};
 use ssh_key::{
     PublicKey,
     certificate::{Builder as CertBuilder, CertType, Certificate},
@@ -101,9 +101,9 @@ impl CertificateAuthority {
             + (user_defaults.validity_in_days as u64 * 86400_u64);
         let mut cert_builder =
             CertBuilder::new_with_random_nonce(&mut OsRng, public_key, valid_after, valid_before)?;
-        cert_builder.serial(42)?; // Optional: serial number chosen by the CA
-        cert_builder.key_id("nobody-cert-02")?; // Optional: CA-specific key identifier
-        cert_builder.cert_type(CertType::User)?; // User or host certificate
+        cert_builder.serial(OsRng.next_u64())?;
+        cert_builder.key_id(&format!("user-{}-{}", user, valid_after))?;
+        cert_builder.cert_type(CertType::User)?;
         for principal in user_defaults.principals {
             debug!("adding principal: {}", principal);
             let _ = cert_builder.valid_principal(principal); // Unix username or hostname
@@ -182,9 +182,9 @@ impl CertificateAuthority {
             + (host_config.validity_in_days as u64 * 86400_u64);
         let mut cert_builder =
             CertBuilder::new_with_random_nonce(&mut OsRng, public_key, valid_after, valid_before)?;
-        cert_builder.serial(42)?; // Optional: serial number chosen by the CA
-        cert_builder.key_id("nobody-cert-02")?; // Optional: CA-specific key identifier
-        cert_builder.cert_type(CertType::Host)?; // User or host certificate
+        cert_builder.serial(OsRng.next_u64())?;
+        cert_builder.key_id(&format!("host-{}-{}", host_name, valid_after))?;
+        cert_builder.cert_type(CertType::Host)?;
         for principal in host_config.hostnames {
             debug!("adding principal: {}", principal);
             let _ = cert_builder.valid_principal(principal); // Unix username or hostname
