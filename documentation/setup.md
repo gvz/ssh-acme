@@ -13,8 +13,9 @@ This guide walks through building the SSH Certificate Authority server from sour
 7. [Run the server](#7-run-the-server)
 8. [Run as a systemd service](#8-run-as-a-systemd-service)
 9. [Trust the CA on clients](#9-trust-the-ca-on-clients)
-10. [Request a user certificate](#10-request-a-user-certificate)
-11. [Request a host certificate](#11-request-a-host-certificate)
+10. [Install the client scripts](#10-install-the-client-scripts)
+11. [Request a user certificate](#11-request-a-user-certificate)
+12. [Request a host certificate](#12-request-a-host-certificate)
 
 ---
 
@@ -319,22 +320,78 @@ echo "@cert-authority * $(cat ca_key.pub)" | sudo tee -a /etc/ssh/ssh_known_host
 
 ---
 
-## 10. Request a user certificate
+## 10. Install the client scripts
 
-A user authenticates with their username and password, sends their public key as stdin, and receives a signed certificate on stdout.
+The repository ships two Bash scripts in the `clients/` directory that wrap the raw SSH commands with argument parsing, input validation, retry logic, and certificate verification.
+
+| Script | Purpose |
+|---|---|
+| `ssh-ca-sign-user-key.sh` | Request a signed user certificate (password auth) |
+| `ssh-ca-sign-host-key.sh` | Request a signed host certificate (public key auth) |
+
+Copy them to a directory on `$PATH` on each machine that needs them:
 
 ```bash
-# On the client machine
-ssh -p 2222 alice@ca-server.example.com < ~/.ssh/id_ed25519.pub > ~/.ssh/id_ed25519-cert.pub
+# On a user's workstation
+sudo cp clients/ssh-ca-sign-user-key.sh /usr/local/bin/
+sudo chmod +x /usr/local/bin/ssh-ca-sign-user-key.sh
+
+# On each managed host
+sudo cp clients/ssh-ca-sign-host-key.sh /usr/local/bin/
+sudo chmod +x /usr/local/bin/ssh-ca-sign-host-key.sh
 ```
 
-Verify the certificate:
+Both scripts require only `bash`, `ssh`, and `ssh-keygen` (standard on any Linux system). `getopt` from `util-linux` is also required and is present by default on all major distributions.
+
+---
+
+## 11. Request a user certificate
+
+Run `ssh-ca-sign-user-key.sh` on the user's workstation. The script authenticates with the user's password (PAM), sends the public key to the CA, and writes the signed certificate to disk. You will be prompted for your password interactively.
 
 ```bash
-ssh-keygen -L -f ~/.ssh/id_ed25519-cert.pub
+ssh-ca-sign-user-key.sh -s ca-server.example.com
 ```
 
-Configure the SSH client to present the certificate automatically by adding to `~/.ssh/config`:
+This signs `~/.ssh/id_ed25519.pub` and writes the certificate to `~/.ssh/id_ed25519-cert.pub`.
+
+### Options
+
+| Flag | Short | Default | Description |
+|---|---|---|---|
+| `--server <HOST>` | `-s` | *(required)* | CA server address |
+| `--port <PORT>` | `-p` | `2222` | CA server SSH port |
+| `--user <NAME>` | `-u` | `$USER` | Username for authentication |
+| `--key <PATH>` | `-k` | `~/.ssh/id_ed25519.pub` | Public key to sign |
+| `--output <PATH>` | `-o` | `<key>-cert.pub` | Output certificate path |
+| `--known-hosts <PATH>` | | system default | Custom known_hosts file for the CA |
+| `--no-host-check` | | off | Disable CA host key verification |
+| `--retry <N>` | | `0` | Number of retry attempts |
+| `--retry-delay <SEC>` | | `5` | Seconds between retries |
+| `--verbose` | `-v` | off | Enable verbose output |
+
+### Examples
+
+```bash
+# Sign the default key; prompts for password
+ssh-ca-sign-user-key.sh -s ca-server.example.com
+
+# Sign a specific key as a named user
+ssh-ca-sign-user-key.sh -s ca-server.example.com -u alice -k ~/.ssh/id_ed25519.pub
+
+# Custom port, explicit output path, verbose logging
+ssh-ca-sign-user-key.sh -s ca-server.example.com -p 2222 \
+    -o ~/.ssh/id_ed25519-cert.pub -v
+
+# Retry up to 3 times with a 10-second delay between attempts
+ssh-ca-sign-user-key.sh -s ca-server.example.com --retry 3 --retry-delay 10
+```
+
+The script prints the certificate details via `ssh-keygen -L` on success.
+
+### Configure the SSH client
+
+Add the following to `~/.ssh/config` so the certificate is presented automatically:
 
 ```
 Host *
@@ -342,32 +399,127 @@ Host *
     IdentityFile    ~/.ssh/id_ed25519
 ```
 
----
+### Manual alternative
 
-## 11. Request a host certificate
-
-A host authenticates with its own host public key and runs the `sign_host_key` command. The host's public key must already be registered in the CA's host inventory (see [Section 5](#5-create-the-configuration)).
+If the script is not available, the same operation can be performed with a raw `ssh` command:
 
 ```bash
-# Run this on the host machine that wants a signed host certificate
+ssh -T -p 2222 alice@ca-server.example.com \
+    < ~/.ssh/id_ed25519.pub \
+    > ~/.ssh/id_ed25519-cert.pub
+```
+
+---
+
+## 12. Request a host certificate
+
+Run `ssh-ca-sign-host-key.sh` on the host that needs a signed certificate. The script authenticates using the host's private key (public key auth), requests signing, and writes the certificate to disk. The host's public key must already be registered in the CA's host inventory (see [Section 5](#5-create-the-configuration)).
+
+```bash
+sudo ssh-ca-sign-host-key.sh -s ca-server.example.com
+```
+
+This signs `/etc/ssh/ssh_host_ed25519_key` and writes the certificate to `/etc/ssh/ssh_host_ed25519_key-cert.pub`. Root (or equivalent) is required to read the host private key.
+
+### Options
+
+| Flag | Short | Default | Description |
+|---|---|---|---|
+| `--server <HOST>` | `-s` | *(required)* | CA server address |
+| `--port <PORT>` | `-p` | `2222` | CA server SSH port |
+| `--identity <PATH>` | `-i` | `/etc/ssh/ssh_host_ed25519_key` | Host private key |
+| `--hostname <NAME>` | `-n` | `$(hostname)` | Hostname to authenticate as |
+| `--output <PATH>` | `-o` | `<identity>-cert.pub` | Output certificate path |
+| `--known-hosts <PATH>` | | system default | Custom known_hosts file for the CA |
+| `--no-host-check` | | off | Disable CA host key verification |
+| `--reload` | | off | Reload sshd after signing |
+| `--retry <N>` | | `0` | Number of retry attempts |
+| `--retry-delay <SEC>` | | `5` | Seconds between retries |
+| `--verbose` | `-v` | off | Enable verbose output |
+
+### Examples
+
+```bash
+# Sign the default host key
+sudo ssh-ca-sign-host-key.sh -s ca-server.example.com
+
+# Sign a specific key, reload sshd automatically when done
+sudo ssh-ca-sign-host-key.sh -s ca-server.example.com \
+    -i /etc/ssh/ssh_host_ed25519_key --reload
+
+# Custom port, explicit hostname, retry on failure
+sudo ssh-ca-sign-host-key.sh -s ca-server.example.com -p 2222 \
+    -n webserver --retry 3
+
+# Use a dedicated known_hosts file for the CA server
+sudo ssh-ca-sign-host-key.sh -s ca-server.example.com \
+    --known-hosts /etc/ssh_ca/ca_known_hosts
+```
+
+### Configure sshd
+
+Tell sshd to present the certificate by adding to `/etc/ssh/sshd_config`:
+
+```
+HostKey         /etc/ssh/ssh_host_ed25519_key
+HostCertificate /etc/ssh/ssh_host_ed25519_key-cert.pub
+```
+
+If you did not pass `--reload`, reload sshd manually:
+
+```bash
+sudo systemctl reload sshd
+```
+
+### Automating renewal with a systemd timer
+
+Host certificates expire. Create a systemd service and timer to renew automatically.
+
+`/etc/systemd/system/ssh-host-cert-renew.service`:
+
+```ini
+[Unit]
+Description=Renew SSH host certificate from CA
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/ssh-ca-sign-host-key.sh \
+    -s ca-server.example.com \
+    --reload
+```
+
+`/etc/systemd/system/ssh-host-cert-renew.timer`:
+
+```ini
+[Unit]
+Description=Renew SSH host certificate daily
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+Enable the timer:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now ssh-host-cert-renew.timer
+```
+
+### Manual alternative
+
+If the script is not available, the same operation can be performed with a raw `ssh` command:
+
+```bash
 ssh -i /etc/ssh/ssh_host_ed25519_key \
     -p 2222 \
     webserver@ca-server.example.com \
     sign_host_key \
     > /etc/ssh/ssh_host_ed25519_key-cert.pub
-```
-
-Tell sshd to present the certificate by adding to `/etc/ssh/sshd_config`:
-
-```
-HostKey          /etc/ssh/ssh_host_ed25519_key
-HostCertificate  /etc/ssh/ssh_host_ed25519_key-cert.pub
-```
-
-Reload sshd:
-
-```bash
-sudo systemctl reload sshd
 ```
 
 ---

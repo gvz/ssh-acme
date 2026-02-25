@@ -36,10 +36,35 @@ src/
     ├── mod.rs                            # UserAuthenticator trait and authenticator setup
     └── pam_auth.rs                       # PAM-based authenticator
 
+clients/                                  # Bash client scripts for certificate signing
 config/                                   # Example configuration files
 tests/                                    # Integration and end-to-end tests
 full_fuzz/                                # AFL++ fuzzing harness
 ```
+
+## Client Scripts
+
+The `clients/` directory contains two Bash scripts for requesting certificates from the CA. Copy them to any machine that needs to interact with the CA server.
+
+**Sign a user certificate** (run on the user's workstation):
+
+```bash
+ssh-ca-sign-user-key.sh -s ca-server.example.com
+```
+
+Authenticates with your username and password (PAM), signs `~/.ssh/id_ed25519.pub`, and writes the certificate to `~/.ssh/id_ed25519-cert.pub`.
+
+**Sign a host certificate** (run on the managed host, as root):
+
+```bash
+sudo ssh-ca-sign-host-key.sh -s ca-server.example.com --reload
+```
+
+Authenticates with the host's private key, signs `/etc/ssh/ssh_host_ed25519_key`, writes the certificate to `/etc/ssh/ssh_host_ed25519_key-cert.pub`, and reloads sshd.
+
+Both scripts support `--help` for the full option list. See [`documentation/setup.md`](documentation/setup.md) for installation instructions and all options.
+
+---
 
 ## Getting Started
 
