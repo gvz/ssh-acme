@@ -2,6 +2,10 @@
 
 This project provides a self-hosted SSH Certificate Authority (CA), similar in spirit to Let's Encrypt but for SSH certificates. Machines and users connect to this server over SSH to obtain short-lived, automatically renewable SSH certificates — replacing long-lived static keys.
 
+## New here? Start with the Setup Guide
+
+See **[documentation/setup.md](documentation/setup.md)** for a full walkthrough: prerequisites, building, key generation, configuration, running the server, and requesting your first certificate.
+
 ## Features
 
 - **SSH Certificate Authority:** A built-in CA that signs SSH public keys into user or host certificates.
@@ -44,7 +48,7 @@ full_fuzz/                                # AFL++ fuzzing harness
 
 ## Client Scripts
 
-The `clients/` directory contains two Bash scripts for requesting certificates from the CA. Copy them to any machine that needs to interact with the CA server.
+The `clients/` directory contains two Bash scripts for requesting certificates from the CA.
 
 **Sign a user certificate** (run on the user's workstation):
 
@@ -52,72 +56,17 @@ The `clients/` directory contains two Bash scripts for requesting certificates f
 ssh-ca-sign-user-key.sh -s ca-server.example.com
 ```
 
-Authenticates with your username and password (PAM), signs `~/.ssh/id_ed25519.pub`, and writes the certificate to `~/.ssh/id_ed25519-cert.pub`.
-
 **Sign a host certificate** (run on the managed host, as root):
 
 ```bash
 sudo ssh-ca-sign-host-key.sh -s ca-server.example.com --reload
 ```
 
-Authenticates with the host's private key, signs `/etc/ssh/ssh_host_ed25519_key`, writes the certificate to `/etc/ssh/ssh_host_ed25519_key-cert.pub`, and reloads sshd.
-
-Both scripts support `--help` for the full option list. See [`documentation/setup.md`](documentation/setup.md) for installation instructions and all options.
+Both scripts support `--help` for the full option list. See [documentation/setup.md](documentation/setup.md) for installation instructions and all options.
 
 ---
 
-## Getting Started
-
-### Prerequisites
-
-- **Rust** (latest stable) — or use the provided Nix dev shell (see below)
-- **libpam-dev** (or equivalent for your distribution) for PAM authentication
-
-#### Using the Nix dev shell (recommended)
-
-The repository ships a Nix flake. If you have Nix with flakes enabled:
-
-```bash
-nix develop
-```
-
-[direnv](https://direnv.net/) is also configured — `direnv allow` will activate the shell automatically.
-
-### Building
-
-```bash
-cargo build --release
-```
-
-### Running
-
-The binary has two modes, controlled by CLI flags.
-
-#### Combined mode (default)
-
-Starts the SSH server and automatically spawns the CA server as a child process. The socket path is generated automatically in a temporary directory.
-
-```bash
-cargo run -- -c config/config.toml
-```
-
-#### Standalone CA server
-
-Runs only the CA server, listening on the specified Unix socket. Useful for running the CA as a separate process or service.
-
-```bash
-cargo run -- -c config/config.toml --certificate-authority --socket-path /run/ssh_ca/ca.sock
-```
-
-#### SSH server with an external CA
-
-Run the SSH server without spawning its own CA process (e.g. when the CA is managed by a separate systemd unit):
-
-```bash
-cargo run -- -c config/config.toml --socket-path /run/ssh_ca/ca.sock --disable-ca
-```
-
-### CLI flags
+## CLI flags
 
 | Flag                      | Short | Description                                                                 |
 |---------------------------|-------|-----------------------------------------------------------------------------|
@@ -125,68 +74,6 @@ cargo run -- -c config/config.toml --socket-path /run/ssh_ca/ca.sock --disable-c
 | `--certificate-authority` | `-a`  | Run as a standalone CA server                                               |
 | `--socket-path <PATH>`    | `-s`  | Unix socket path for CA communication (auto-generated if omitted)           |
 | `--disable-ca`            |       | Start the SSH server without spawning a CA child process                    |
-
-## Configuration
-
-### Main config (`config/config.toml`)
-
-```toml
-[ssh]
-bind = "0.0.0.0"
-port = 2222
-private_key = "/etc/ssh/ssh_host_ed25519_key"
-# Optional: path to the server's own signed host certificate
-certificate = "/etc/ssh/ssh_host_ed25519_key-cert.pub"
-
-[ca]
-ca_key = "/etc/ssh_ca/ca_key"
-user_list_file = "/etc/ssh_ca/user.toml"
-default_user_template = "/etc/ssh_ca/user_default.toml"
-host_inventory = "/etc/ssh_ca/hosts/"
-
-[identity_handlers]
-user_authenticators = ["pam"]
-```
-
-Relative paths in `[ca]` are resolved relative to the directory containing the config file.
-
-### User list (`user_list_file`)
-
-Maps usernames to their certificate template files. Paths are relative to the user list file itself.
-
-```toml
-[users]
-alice = "./alice_template.toml"
-bob   = "./bob_template.toml"
-# Users not listed here receive the default_user_template
-```
-
-### User certificate template
-
-Templates are TOML files rendered with MiniJinja. The variable `user_name` holds the authenticated username.
-
-```toml
-validity_in_days = 7
-principals = ["{{ user_name }}"]
-extensions = [
-    "permit-pty",
-    "permit-agent-forwarding",
-    "permit-x11-forwarding",
-    "permit-user-rc",
-]
-```
-
-### Host inventory (`host_inventory`)
-
-One TOML file per host, named `<hostname>.toml`, placed in the `host_inventory` directory.
-
-```toml
-# config/hosts/webserver.toml
-public_key = "ssh-ed25519 AAAA..."
-validity_in_days = 365
-hostnames = ["webserver", "webserver.example.com"]
-extensions = []
-```
 
 ## How It Works
 
