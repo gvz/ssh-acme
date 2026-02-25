@@ -12,9 +12,10 @@ use log::{debug, error, info};
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use subtle::ConstantTimeEq;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixListener;
 
-use super::{AuthenticatedRequest, CaRequest, CaResponse, CertificateAuthority};
+use super::{AuthenticatedRequest, CaRequest, CaResponse, CertificateAuthority, MAX_MESSAGE_SIZE};
 
 /// A server for the Certificate Authority.
 pub struct CaServer {
@@ -82,13 +83,34 @@ impl CaServer {
                             continue;
                         }
                     }
-                    stream.readable().await.unwrap();
-                    let mut buf = Vec::with_capacity(4096);
-                    if let Err(e) = stream.try_read_buf(&mut buf) {
-                        error!("Failed to read request: {}", e);
+                    let mut stream = stream;
+                    // Read the 4-byte big-endian length prefix.
+                    let mut len_buf = [0u8; 4];
+                    if let Err(e) = stream.read_exact(&mut len_buf).await {
+                        error!("Failed to read message length: {}", e);
                         continue;
                     }
-                    let request_json = String::from_utf8(buf).unwrap();
+                    let msg_len = u32::from_be_bytes(len_buf);
+                    if msg_len > MAX_MESSAGE_SIZE {
+                        error!(
+                            "Rejected CA request: message size {} exceeds maximum {}",
+                            msg_len, MAX_MESSAGE_SIZE
+                        );
+                        continue;
+                    }
+                    // Allocate exactly the declared size and read the full payload.
+                    let mut buf = vec![0u8; msg_len as usize];
+                    if let Err(e) = stream.read_exact(&mut buf).await {
+                        error!("Failed to read request payload: {}", e);
+                        continue;
+                    }
+                    let request_json = match String::from_utf8(buf) {
+                        Ok(s) => s,
+                        Err(e) => {
+                            error!("Request is not valid UTF-8: {}", e);
+                            continue;
+                        }
+                    };
                     debug!("got request (length={})", request_json.len());
                     let response = match serde_json::from_str::<AuthenticatedRequest>(&request_json)
                     {
@@ -128,8 +150,14 @@ impl CaServer {
                     };
 
                     let response_json = serde_json::to_string(&response)?;
-                    if let Err(e) = stream.try_write(response_json.as_bytes()) {
-                        error!("Failed to write response: {}", e);
+                    let response_bytes = response_json.as_bytes();
+                    let response_len = response_bytes.len() as u32;
+                    if let Err(e) = stream.write_all(&response_len.to_be_bytes()).await {
+                        error!("Failed to write response length: {}", e);
+                        continue;
+                    }
+                    if let Err(e) = stream.write_all(response_bytes).await {
+                        error!("Failed to write response payload: {}", e);
                     }
                 }
                 Err(e) => error!("connection failed: {:?}", e),

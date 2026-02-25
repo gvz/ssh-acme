@@ -11,7 +11,7 @@ use log::debug;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixStream;
 
-use super::{AuthenticatedRequest, CaRequest, CaResponse};
+use super::{AuthenticatedRequest, CaRequest, CaResponse, MAX_MESSAGE_SIZE};
 
 /// A client for the Certificate Authority.
 #[derive(Clone)]
@@ -62,11 +62,35 @@ impl CaClient {
         };
 
         let request_json = serde_json::to_string(&auth_request)?;
-        stream.write_all(request_json.as_bytes()).await?;
+        let request_bytes = request_json.as_bytes();
+        let request_len = request_bytes.len() as u32;
+        if request_len > MAX_MESSAGE_SIZE {
+            anyhow::bail!(
+                "Request size {} exceeds maximum allowed {}",
+                request_len,
+                MAX_MESSAGE_SIZE
+            );
+        }
+        // Write the 4-byte big-endian length prefix followed by the payload.
+        stream.write_all(&request_len.to_be_bytes()).await?;
+        stream.write_all(request_bytes).await?;
         debug!("wrote to: {}", self.socket_path);
 
-        let mut response_json = String::new();
-        stream.read_to_string(&mut response_json).await?;
+        // Read the 4-byte big-endian length prefix of the response.
+        let mut len_buf = [0u8; 4];
+        stream.read_exact(&mut len_buf).await?;
+        let response_len = u32::from_be_bytes(len_buf);
+        if response_len > MAX_MESSAGE_SIZE {
+            anyhow::bail!(
+                "Response size {} exceeds maximum allowed {}",
+                response_len,
+                MAX_MESSAGE_SIZE
+            );
+        }
+        // Read exactly the declared number of bytes.
+        let mut response_buf = vec![0u8; response_len as usize];
+        stream.read_exact(&mut response_buf).await?;
+        let response_json = String::from_utf8(response_buf)?;
         debug!("read from: {}, {}", self.socket_path, response_json);
         let response: CaResponse = serde_json::from_str(&response_json)?;
         Ok(response)

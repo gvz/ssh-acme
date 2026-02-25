@@ -19,6 +19,12 @@ use ssh_key::{
 use thiserror::Error;
 use zeroize::Zeroizing;
 
+/// Maximum size (in bytes) for a single IPC message on the Unix socket.
+/// Both client and server enforce this limit to prevent OOM denial of service.
+/// 64 KiB is generous for any legitimate request (SSH public keys + JSON
+/// envelope are typically well under 16 KiB).
+pub const MAX_MESSAGE_SIZE: u32 = 65_536;
+
 /// Client for communicating with the CA server over a Unix socket.
 pub mod ca_client;
 /// CA server that listens for signing requests on a Unix socket.
