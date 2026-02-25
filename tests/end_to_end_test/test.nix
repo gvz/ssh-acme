@@ -2,6 +2,7 @@
 let
   pkgs = import nixpkgs { system = "x86_64-linux"; };
   test_utils_lib = ./test_utils.py;
+  client_scripts = ../../clients;
 in
 pkgs.testers.nixosTest {
   name = "end-to-end_test";
@@ -132,28 +133,49 @@ pkgs.testers.nixosTest {
     test_key = CA.succeed("cat /etc/ssh_ca/hosts/testhost.toml")
     print(test_key)
 
-    # Get TestHost's host key signed (using the NixOS-generated host key)
-    TestHost.succeed("ssh -i /tmp/TestHost_key -p 2222 TestHost@CA \"sign_host_key\" > /tmp/TestHost.cert")
+    # Copy client scripts to VMs
+    TestHost.copy_from_host("${client_scripts}/ssh-ca-sign-host-key.sh", "/tmp/ssh-ca-sign-host-key.sh")
+    TestHost.succeed("chmod +x /tmp/ssh-ca-sign-host-key.sh")
+    Client.copy_from_host("${client_scripts}/ssh-ca-sign-user-key.sh", "/tmp/ssh-ca-sign-user-key.sh")
+    Client.succeed("chmod +x /tmp/ssh-ca-sign-user-key.sh")
+
+    # Get TestHost's host key signed using the client script
+    TestHost.succeed(
+        "/tmp/ssh-ca-sign-host-key.sh"
+        " -s CA"
+        " -p 2222"
+        " -i /tmp/TestHost_key"
+        " -n TestHost"
+        " -o /tmp/TestHost.cert"
+        " -v"
+    )
     ret = TestHost.succeed("cat /tmp/TestHost.cert")
     print(ret)
 
     # === User Certificate Signing ===
-    # Alice gets her key signed by the CA using password auth.
-    # ssh -T disables PTY allocation; stdin (the public key) is sent as channel
-    # data, which the server's data() handler passes to user_key_signer.
+    # Alice and Bob get their keys signed by the CA using the client script.
+    # sshpass provides the password non-interactively for the script's SSH call.
     Client.succeed(
         "su alice -c '"
-        "sshpass -p alice ssh -T -p 2222 alice@CA "
-        "< /home/alice/.ssh/id_ed25519.pub "
-        "> /home/alice/.ssh/id_ed25519-cert.pub"
+        "sshpass -p alice /tmp/ssh-ca-sign-user-key.sh"
+        " -s CA"
+        " -p 2222"
+        " -u alice"
+        " -k /home/alice/.ssh/id_ed25519.pub"
+        " -o /home/alice/.ssh/id_ed25519-cert.pub"
+        " -v"
         "'"
     )
     # Sign bob's key
     Client.succeed(
         "su bob -c '"
-        "sshpass -p bob ssh -T -p 2222 bob@CA "
-        "< /home/bob/.ssh/id_ed25519.pub "
-        "> /home/bob/.ssh/id_ed25519-cert.pub"
+        "sshpass -p bob /tmp/ssh-ca-sign-user-key.sh"
+        " -s CA"
+        " -p 2222"
+        " -u bob"
+        " -k /home/bob/.ssh/id_ed25519.pub"
+        " -o /home/bob/.ssh/id_ed25519-cert.pub"
+        " -v"
         "'"
     )
 
