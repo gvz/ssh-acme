@@ -2,18 +2,28 @@
 //!
 //! This module provides a server for the Certificate Authority (CA) that listens for requests
 //! on a Unix socket. It handles requests for signing SSH certificates.
+//!
+//! Every request must be wrapped in an [`AuthenticatedRequest`] envelope that
+//! carries a bearer token and a monotonic counter. The server verifies the token
+//! using constant-time comparison and rejects any counter value that is not
+//! strictly greater than the previously accepted one (replay protection).
 use anyhow::Result;
 use log::{debug, error, info};
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
+use subtle::ConstantTimeEq;
 use tokio::net::UnixListener;
 
-use super::{CaRequest, CaResponse, CertificateAuthority};
+use super::{AuthenticatedRequest, CaRequest, CaResponse, CertificateAuthority};
 
 /// A server for the Certificate Authority.
 pub struct CaServer {
     socket_path: String,
     ca: CertificateAuthority,
+    /// Shared secret token used to authenticate IPC requests.
+    auth_token: String,
+    /// The last accepted monotonic counter value; used for replay protection.
+    last_counter: u64,
 }
 
 impl CaServer {
@@ -23,15 +33,22 @@ impl CaServer {
     ///
     /// * `socket_path` - The path to the Unix socket to listen on.
     /// * `ca` - The `CertificateAuthority` instance to use for signing certificates.
-    pub fn new(socket_path: String, ca: CertificateAuthority) -> Self {
-        CaServer { socket_path, ca }
+    /// * `auth_token` - The shared secret token for authenticating IPC requests.
+    pub fn new(socket_path: String, ca: CertificateAuthority, auth_token: String) -> Self {
+        CaServer {
+            socket_path,
+            ca,
+            auth_token,
+            last_counter: 0,
+        }
     }
 
     /// Runs the CA server.
     ///
     /// This function binds to the specified Unix socket and enters a loop to accept
-    /// and handle incoming connections.
-    pub async fn run(&self) -> Result<()> {
+    /// and handle incoming connections. Each request is authenticated via a shared
+    /// bearer token and a monotonic counter before being dispatched.
+    pub async fn run(&mut self) -> Result<()> {
         // Clean up old socket if it exists
         if fs::metadata(&self.socket_path).is_ok() {
             fs::remove_file(&self.socket_path)?;
@@ -72,15 +89,38 @@ impl CaServer {
                         continue;
                     }
                     let request_json = String::from_utf8(buf).unwrap();
-                    debug!("got request: {}", request_json);
-                    let response = match serde_json::from_str::<CaRequest>(&request_json) {
-                        Ok(request) => match self.handle_request(request) {
-                            Ok(resp) => resp,
-                            Err(e) => {
-                                error!("Error handling CA request: {}", e);
-                                CaResponse::Error(e.to_string())
+                    debug!("got request (length={})", request_json.len());
+                    let response = match serde_json::from_str::<AuthenticatedRequest>(&request_json)
+                    {
+                        Ok(auth_req) => {
+                            // Verify the bearer token using constant-time comparison
+                            // to prevent timing side-channel attacks.
+                            let token_valid: bool = auth_req
+                                .token
+                                .as_bytes()
+                                .ct_eq(self.auth_token.as_bytes())
+                                .into();
+                            if !token_valid {
+                                error!("Rejected CA request: invalid authentication token");
+                                CaResponse::Error("authentication failed".to_string())
+                            } else if auth_req.counter <= self.last_counter {
+                                // Reject replayed or out-of-order requests.
+                                error!(
+                                    "Rejected CA request: counter {} is not greater than last accepted {}",
+                                    auth_req.counter, self.last_counter
+                                );
+                                CaResponse::Error("authentication failed".to_string())
+                            } else {
+                                self.last_counter = auth_req.counter;
+                                match self.handle_request(auth_req.request) {
+                                    Ok(resp) => resp,
+                                    Err(e) => {
+                                        error!("Error handling CA request: {}", e);
+                                        CaResponse::Error(e.to_string())
+                                    }
+                                }
                             }
-                        },
+                        }
                         Err(e) => {
                             error!("Failed to deserialize request: {}", e);
                             CaResponse::Error(format!("Invalid request format: {}", e))

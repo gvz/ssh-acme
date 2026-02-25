@@ -250,7 +250,7 @@ impl Handler for ConnectionHandler {
         let key_found = match self
             .server
             .ca_client
-            .send_request(&&CaRequest::CheckPublicKey {
+            .send_request(CaRequest::CheckPublicKey {
                 public_key: ssh_key::PublicKey::from_openssh(&public_key.to_openssh().unwrap())
                     .unwrap(),
             })

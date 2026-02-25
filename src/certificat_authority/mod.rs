@@ -257,6 +257,18 @@ pub enum CaResponse {
     KeyFound(Option<String>),
 }
 
+/// An authenticated wrapper around [`CaRequest`] that provides bearer-token
+/// authentication and monotonic-counter replay protection for the IPC channel.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct AuthenticatedRequest {
+    /// Shared secret token generated at startup and exchanged via a temporary file.
+    pub token: String,
+    /// Strictly increasing counter — the server rejects any value ≤ the last accepted one.
+    pub counter: u64,
+    /// The inner CA request to execute after authentication succeeds.
+    pub request: CaRequest,
+}
+
 #[cfg(test)]
 mod test {
     use super::*;

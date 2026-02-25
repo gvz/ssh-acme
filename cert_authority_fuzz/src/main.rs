@@ -117,7 +117,7 @@ fn setup_ca() -> CaServer {
         ca_key: ca_private_key_path,
     };
     let ca = CertificateAuthority::new(&ca_config).unwrap();
-    let ca_server = CaServer::new("test_socket".to_string(), ca);
+    let ca_server = CaServer::new("test_socket".to_string(), ca, "fuzz_token".to_string());
 
     ca_server
 }

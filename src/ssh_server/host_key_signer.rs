@@ -85,7 +85,7 @@ pub async fn handle_sign_host_key(
     let cert = match handler
         .server
         .ca_client
-        .send_request(&CaRequest::SignHostCertificate {
+        .send_request(CaRequest::SignHostCertificate {
             host_name: host_name.clone(),
             public_key: public_key.clone(),
         })

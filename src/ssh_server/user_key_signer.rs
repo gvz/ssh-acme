@@ -46,7 +46,7 @@ pub async fn handler_sign_user_key(
     let cert = match handler
         .server
         .ca_client
-        .send_request(&CaRequest::SignCertificate {
+        .send_request(CaRequest::SignCertificate {
             user: username.clone(),
             public_key: public_key.clone(),
         })

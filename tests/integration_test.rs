@@ -1,10 +1,12 @@
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use env_logger;
 use russh::client::{AuthResult, Config, Handler};
-use ssh_key::rand_core::OsRng;
+use ssh_key::rand_core::{OsRng, RngCore};
 use ssh_key::{Algorithm, Certificate, private::PrivateKey};
 use std::env::{self};
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::Write;
+use std::os::unix::fs::PermissionsExt;
 use std::sync::Arc;
 use std::time::Duration;
 use tempfile::tempdir;
@@ -167,7 +169,26 @@ async fn test_user_key_signing() {
     std::fs::write(&host_cert_path, host_cert_template)
         .expect("Failed to write host cert template file");
 
+    // Generate a shared IPC authentication token for the CA and SSH server.
+    let mut token_bytes = [0u8; 32];
+    OsRng.fill_bytes(&mut token_bytes);
+    let auth_token = BASE64.encode(token_bytes);
+
+    // Write the token to a file for the CA server to consume.
+    let ca_token_file = temp_dir.path().join("ca_token");
+    fs::write(&ca_token_file, &auth_token).expect("Failed to write CA token file");
+    fs::set_permissions(&ca_token_file, fs::Permissions::from_mode(0o600))
+        .expect("Failed to set token file permissions");
+
+    // Write a second copy for the SSH server (since --disable-ca means it
+    // won't generate its own token).
+    let ssh_token_file = temp_dir.path().join("ssh_token");
+    fs::write(&ssh_token_file, &auth_token).expect("Failed to write SSH token file");
+    fs::set_permissions(&ssh_token_file, fs::Permissions::from_mode(0o600))
+        .expect("Failed to set token file permissions");
+
     info!("start SSH");
+    let ssh_token_file_str = ssh_token_file.to_str().unwrap().to_string();
     let ssh_args = CliArgs::parse_from(
         [
             "-c",
@@ -176,6 +197,8 @@ async fn test_user_key_signing() {
             "--disable-ca",
             "-s",
             &socket_path.as_os_str().to_str().unwrap(),
+            "--token-file",
+            &ssh_token_file_str,
         ]
         .iter(),
     );
@@ -183,6 +206,7 @@ async fn test_user_key_signing() {
     let ssh_server = tokio::spawn(async move { run_server(ssh_args).await });
 
     info!("start CA");
+    let ca_token_file_str = ca_token_file.to_str().unwrap().to_string();
     let ca_args = CliArgs::parse_from(
         [
             "-c",
@@ -191,6 +215,8 @@ async fn test_user_key_signing() {
             "-a",
             "-s",
             &socket_path.as_os_str().to_str().unwrap(),
+            "--token-file",
+            &ca_token_file_str,
         ]
         .iter(),
     );

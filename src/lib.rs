@@ -4,10 +4,13 @@
 //! It includes the main server logic, command-line argument parsing,
 //! and the coordination between the SSH server and the Certificate Authority (CA).
 
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use clap::Parser;
 use log::{error, info};
+use ssh_key::rand_core::{OsRng, RngCore};
 use std::env;
 use std::fs;
+use std::os::unix::fs::PermissionsExt;
 use std::process::Command;
 use tempfile::tempdir;
 
@@ -39,6 +42,12 @@ pub struct CliArgs {
     /// Disable the automatic startup of the CA server.
     #[arg(long, default_value_t = false)]
     disable_ca: bool,
+    /// Path to a file containing the IPC authentication token.
+    /// In CA mode, the token is read and the file is immediately deleted.
+    /// In SSH server mode, the token is generated and written to this file
+    /// (or an auto-generated path) for the CA child process to consume.
+    #[arg(long)]
+    token_file: Option<String>,
 }
 
 /// Runs the SSH Certificate Authority server.
@@ -72,8 +81,25 @@ pub async fn run_server(args: CliArgs) {
                 Some(path) => path,
                 None => panic!("in CA mode the socket path in mandatory"),
             };
+            let token_file = match args.token_file {
+                Some(path) => path,
+                None => panic!("in CA mode the --token-file path is mandatory"),
+            };
+            // Read the shared authentication token and immediately delete the
+            // file so that no other process can read it afterwards.
+            let auth_token = match fs::read_to_string(&token_file) {
+                Ok(token) => token,
+                Err(e) => {
+                    error!("Failed to read token file '{}': {}", token_file, e);
+                    return;
+                }
+            };
+            if let Err(e) = fs::remove_file(&token_file) {
+                error!("Failed to delete token file '{}': {}", token_file, e);
+                return;
+            }
             let ca = CertificateAuthority::new(&config.ca).unwrap();
-            let ca_server = CaServer::new(socket_path, ca);
+            let mut ca_server = CaServer::new(socket_path, ca, auth_token);
             ca_server.run().await.unwrap();
         }
         false => {
@@ -90,19 +116,61 @@ pub async fn run_server(args: CliArgs) {
                     path.to_string()
                 }
             };
+            // Obtain the IPC authentication token. If a token file was provided
+            // (e.g. when the CA is managed externally), read the token from that
+            // file. Otherwise, generate a fresh cryptographically random token.
+            let auth_token = match args.token_file {
+                Some(ref path) => match fs::read_to_string(path) {
+                    Ok(token) => token,
+                    Err(e) => {
+                        error!("Failed to read token file '{}': {}", path, e);
+                        return;
+                    }
+                },
+                None => {
+                    let mut token_bytes = [0u8; 32];
+                    OsRng.fill_bytes(&mut token_bytes);
+                    BASE64.encode(token_bytes)
+                }
+            };
+
             let ca_process = if !args.disable_ca {
                 info!("spawning CA");
+
+                // Write the token to a temporary file with restricted permissions
+                // so that only the current user can read it. The CA process will
+                // read and immediately delete this file on startup.
+                let token_file_path = {
+                    let mut p = std::path::PathBuf::from(&socket_path);
+                    p.set_extension("token");
+                    p
+                };
+                if let Err(e) = fs::write(&token_file_path, &auth_token) {
+                    error!("Failed to write token file: {}", e);
+                    return;
+                }
+                if let Err(e) =
+                    fs::set_permissions(&token_file_path, fs::Permissions::from_mode(0o600))
+                {
+                    error!("Failed to set token file permissions: {}", e);
+                    let _ = fs::remove_file(&token_file_path);
+                    return;
+                }
+
                 let ca_process = match Command::new(env::current_exe().unwrap())
                     .arg("-c")
                     .arg(&args.config_file)
                     .arg("-a")
                     .arg("-s")
                     .arg(&socket_path)
+                    .arg("--token-file")
+                    .arg(token_file_path.to_str().unwrap())
                     .spawn()
                 {
                     Ok(p) => p,
                     Err(e) => {
                         error!("Failed to spawn CA server process: {}", e);
+                        let _ = fs::remove_file(&token_file_path);
                         return;
                     }
                 };
@@ -134,7 +202,7 @@ pub async fn run_server(args: CliArgs) {
             )
             .unwrap();
 
-            let ca_client = CaClient::new(socket_path.clone());
+            let ca_client = CaClient::new(socket_path.clone(), auth_token);
 
             let mut server = SshCaServer::new(config.ssh, ca_client, user_authenticators);
             info!("starting server");
