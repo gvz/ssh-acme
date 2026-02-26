@@ -146,7 +146,7 @@
               cp "$src/ssh-ca-sign-host-key.sh" pkg/usr/sbin/ssh-ca-sign-host-key
               chmod 0755 pkg/usr/sbin/ssh-ca-sign-host-key
 
-              dpkg-deb --build pkg "$out/ssh-ca-client_0.1.0_all.deb"
+              dpkg-deb --root-owner-group --build pkg "$out/ssh-ca-client_0.1.0_all.deb"
             '';
         };
 
