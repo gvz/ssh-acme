@@ -1,0 +1,8 @@
+target/
+.git/
+result
+result-*
+*.md
+test_data/
+full_fuzz/
+cert_authority_fuzz/
