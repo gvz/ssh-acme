@@ -2,7 +2,7 @@ name: Build Docker image
 
 on:
   push:
-    branches: [main]
+    branches: [main, add-docker-build-workflow]
     tags: ["v*"]
 
 jobs:
@@ -20,8 +20,8 @@ jobs:
 
       - name: Copy .deb packages to build context
         run: |
-          cp result-server/*.deb .
-          cp result-client/*.deb .
+          cp result-server/*.deb docker/
+          cp result-client/*.deb docker/
 
       - name: Build Docker image
-        run: docker build -t ssh-ca-server:latest .
+        run: docker build -t ssh-ca-server:latest docker/
