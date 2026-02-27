@@ -1,0 +1,16 @@
+FROM debian:trixie-slim
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        openssh-client \
+        sshpass \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY ssh-ca-client_*.deb /tmp/
+RUN dpkg --install /tmp/ssh-ca-client_*.deb && rm -f /tmp/*.deb
+
+# Create test users (no passwords needed on the client)
+RUN useradd -m -s /bin/bash alice && \
+    useradd -m -s /bin/bash bob
+
+CMD ["sleep", "infinity"]

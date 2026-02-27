@@ -1,0 +1,12 @@
+validity_in_days = 7
+principals = [
+  "{{user}}"
+]
+extensions = [
+    "permit-x11-forwarding",
+    "permit-pty",
+    "permit-user-rc",
+    "permit-agent-forwarding"
+]
+
+[critical_options]

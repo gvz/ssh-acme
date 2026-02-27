@@ -1,0 +1,9 @@
+# Map usernames to per-user certificate template files.
+# Users not listed here receive the default template.
+# Paths are relative to this file's directory.
+#
+# [users]
+# alice = "./alice.toml"
+# bob = "./bob.toml"
+
+[users]

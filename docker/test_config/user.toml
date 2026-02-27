@@ -1,0 +1,3 @@
+[users]
+alice = "./test_user_template.toml"
+bob = "./test_user_template.toml"
