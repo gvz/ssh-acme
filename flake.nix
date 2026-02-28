@@ -383,6 +383,7 @@
               pcsclite
               pam
               gnumake
+              act
             ];
             shellHook = ''
               export LIBCLANG_PATH="${llvmPackages.libclang.lib}/lib";
