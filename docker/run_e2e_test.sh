@@ -19,6 +19,7 @@ client() { $DC exec -T client "$@"; }
 
 cleanup() {
   echo "=== Cleanup ==="
+  ca cat /tmp/ca.log
   $DC down -v 2>/dev/null || true
 }
 trap cleanup EXIT
@@ -91,7 +92,8 @@ client su bob -c 'ssh-keygen -t ed25519 -f /home/bob/.ssh/id_ed25519 -N ""'
 echo "=== Phase 7: Start CA server ==="
 # Start the server in the background inside the container
 ca find / -name ssh_ca_server
-ca bash -c 'RUST_LOG=info /usr/bin/ssh_ca_server -c /etc/ssh_ca_server/config.toml &'
+ca bash -c 'RUST_LOG=debug /usr/bin/ssh_ca_server -c /etc/ssh_ca_server/config.toml 2> /tmp/ca.log &'
+ca echo TEST >> /tmp/ca.log
 # Give the server a moment to bind to port 2222
 sleep 2
 
@@ -110,9 +112,11 @@ echo "=== Phase 9: Sign user keys ==="
 $DC cp "${REPO_ROOT}/clients/ssh-ca-sign-user-key.sh" client:/tmp/ssh-ca-sign-user-key.sh
 client chmod +x /tmp/ssh-ca-sign-user-key.sh
 
+echo "=== Phase 9.1: Sign alice keys ==="
 client su alice -c \
   'sshpass -p alice /tmp/ssh-ca-sign-user-key.sh -s ca -p 2222 -u alice -k /home/alice/.ssh/id_ed25519.pub -o /home/alice/.ssh/id_ed25519-cert.pub -v'
 
+echo "=== Phase 9.2: Sign bob keys ==="
 client su bob -c \
   'sshpass -p bob /tmp/ssh-ca-sign-user-key.sh -s ca -p 2222 -u bob -k /home/bob/.ssh/id_ed25519.pub -o /home/bob/.ssh/id_ed25519-cert.pub -v'
 
