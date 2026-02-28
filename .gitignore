@@ -4,3 +4,10 @@
 .gemini
 GEMINI.md
 SECURITY_ANALYSIS.md
+
+# Fuzzing
+/fuzz/corpus/
+/fuzz/artifacts/
+/fuzz/coverage/
+*.profdata
+*.profraw
