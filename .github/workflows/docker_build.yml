@@ -1,0 +1,27 @@
+name: Build Docker image
+
+on:
+  push:
+    branches: [main, add-docker-build-workflow]
+    tags: ["v*"]
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v26
+
+      - name: Build .deb packages
+        run: |
+          nix build .#deb-server -o result-server
+          nix build .#deb-client -o result-client
+
+      - name: Copy .deb packages to build context
+        run: |
+          cp result-server/*.deb docker/
+          cp result-client/*.deb docker/
+
+      - name: Build Docker image
+        run: docker build -t ssh-ca-server:latest docker/
