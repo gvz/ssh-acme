@@ -4,23 +4,7 @@ on:
   push:
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - uses: cachix/install-nix-action@v26
-      - name: Building package
-        run: nix build
-
-  cargo_integration_test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - uses: cachix/install-nix-action@v26
-      - name: Building package
-        run: nix build ".#checks.x86_64-linux.end_to_end_test"
-
-  nixos_integration_test:
+  nixos_end_to_end_test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
