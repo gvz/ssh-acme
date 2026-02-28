@@ -1,0 +1,10 @@
+validity_in_days = 7
+principals = ["{{ user_name }}"]
+extensions = [
+    "permit-pty",
+    "permit-agent-forwarding",
+    "permit-x11-forwarding",
+    "permit-user-rc",
+]
+
+[critical_options]

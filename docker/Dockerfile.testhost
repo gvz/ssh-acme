@@ -1,0 +1,35 @@
+FROM debian:trixie-slim
+
+RUN apt-get update && \
+  apt-get install -y --no-install-recommends \
+  openssh-server \
+  openssh-client \
+  sshpass \
+  && rm -rf /var/lib/apt/lists/*
+
+# Create test users with passwords
+RUN useradd -m -s /bin/bash alice && echo "alice:alice" | chpasswd && \
+  useradd -m -s /bin/bash bob && echo "bob:bob" | chpasswd
+
+# Generate host key
+#RUN ssh-keygen -t ed25519 -f /etc/ssh/ssh_host_ed25519_key -N "" -C "testhost_key"
+
+# Prepare sshd runtime directory
+RUN mkdir -p /run/sshd
+
+# Configure sshd for certificate-based auth
+# - Only ed25519 host key
+# - Host certificate presented to clients (placed by test script)
+# - User certificates trusted via CA public key (placed by test script)
+# - Password and root login disabled
+RUN printf '%s\n' \
+  "HostKey /etc/ssh/ssh_host_ed25519_key" \
+  "HostCertificate /etc/ssh/ssh_host_ed25519_key-cert.pub" \
+  "TrustedUserCAKeys /etc/ssh/ca_key.pub" \
+  "PasswordAuthentication no" \
+  "KbdInteractiveAuthentication no" \
+  "PermitRootLogin no" \
+  >> /etc/ssh/sshd_config
+
+# sshd is started by the test script after certificates are in place
+CMD ["sleep", "infinity"]

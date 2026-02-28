@@ -299,7 +299,10 @@
             inherit version;
             src = ./.;
 
-            nativeBuildInputs = [ pkgs.dpkg ];
+            nativeBuildInputs = [
+              pkgs.dpkg
+              pkgs.patchelf
+            ];
 
             dontBuild = true;
 
@@ -323,9 +326,13 @@
               cp ${postrm} pkg/DEBIAN/postrm
               chmod 0755 pkg/DEBIAN/postrm
 
-              # Server binary
+              # Server binary – patch away Nix-store interpreter & rpath so
+              # the binary works on regular Debian/Ubuntu systems.
               cp ${app}/bin/ssh_ca_server pkg/usr/bin/ssh_ca_server
               chmod 0755 pkg/usr/bin/ssh_ca_server
+              patchelf --set-interpreter /lib64/ld-linux-x86-64.so.2 \
+                       --remove-rpath \
+                       pkg/usr/bin/ssh_ca_server
 
               # Default configuration files
               cp ${configToml} pkg/etc/ssh_ca_server/config.toml

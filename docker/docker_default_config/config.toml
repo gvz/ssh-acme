@@ -1,0 +1,15 @@
+[ssh]
+bind = "0.0.0.0"
+port = 2222
+private_key = "/etc/ssh_ca_server/ssh_ca_host_ed25519_key"
+# Uncomment after signing the host key with the CA:
+# certificate = "/etc/ssh_ca_server/ssh_ca_host_ed25519_key-cert.pub"
+
+[ca]
+ca_key = "/etc/ssh_ca_server/ca_key"
+user_list_file = "/etc/ssh_ca_server/user.toml"
+default_user_template = "/etc/ssh_ca_server/user_default.toml"
+host_inventory = "/etc/ssh_ca_server/hosts/"
+
+[identity_handlers]
+user_authenticators = ["pam"]

@@ -9,7 +9,7 @@ use std::io::Read;
 use std::path::PathBuf;
 
 use anyhow::Result;
-use log::error;
+use log::{debug, error};
 use minijinja::{Environment, context};
 use serde::Deserialize;
 
@@ -69,7 +69,7 @@ pub fn read_user_defaults(user: &str, config: &config::Ca) -> Result<UserDefault
     // use specified config for user or defaut if user has no defaults defined
     let template_path = match user_file_map.users.get(user) {
         Some(path) => {
-            println!("{:?}", path);
+            debug!("user specific template: {:?}", path);
             if path.is_relative() {
                 let user_file_path = config.user_list_file.to_path_buf();
                 let template_path = match user_file_path.parent() {

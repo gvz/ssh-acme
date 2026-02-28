@@ -1,0 +1,30 @@
+services:
+  ca:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    hostname: ca
+    # Override entrypoint so the test script controls when the server starts
+    entrypoint: ["sleep", "infinity"]
+    networks:
+      - testnet
+
+  testhost:
+    build:
+      context: .
+      dockerfile: Dockerfile.testhost
+    hostname: testhost
+    networks:
+      - testnet
+
+  client:
+    build:
+      context: .
+      dockerfile: Dockerfile.client
+    hostname: client
+    networks:
+      - testnet
+
+networks:
+  testnet:
+    driver: bridge
