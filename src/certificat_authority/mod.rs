@@ -320,4 +320,226 @@ mod test {
 
         println!("cert: {:?}", cert.extensions());
     }
+
+    /// Tests that `sign_certificate` creates a certificate with correct principals.
+    #[test]
+    fn test_sign_certificate_principals() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let base_path = temp_dir.path();
+
+        // Create CA key
+        let ca_key = PrivateKey::random(&mut OsRng, Algorithm::Ed25519).unwrap();
+        let ca_key_openssh = ca_key.to_openssh(ssh_key::LineEnding::LF).unwrap();
+        let ca_key_path = base_path.join("ca_key");
+        std::fs::write(&ca_key_path, ca_key_openssh.as_bytes()).unwrap();
+
+        // Create user list
+        let user_list = r#"[users]"#;
+        let user_list_path = base_path.join("user.toml");
+        std::fs::write(&user_list_path, user_list).unwrap();
+
+        // Create user template with specific principals
+        let user_template = r#"
+validity_in_days = 1
+principals = ["{{ user_name }}", "admin"]
+extensions = ["permit-pty", "permit-port-forwarding"]
+"#;
+        let user_template_path = base_path.join("user_default.toml");
+        std::fs::write(&user_template_path, user_template).unwrap();
+
+        let ca_config = config::Ca {
+            user_list_file: user_list_path,
+            ca_key: ca_key_path,
+            default_user_template: user_template_path,
+            host_inventory: base_path.join("hosts"),
+        };
+
+        let authority = CertificateAuthority::new(&ca_config).unwrap();
+        let subject_key = PrivateKey::random(&mut OsRng, Algorithm::Ed25519).unwrap();
+        let subject_public_key = subject_key.public_key();
+
+        let cert = authority
+            .sign_certificate("testuser", subject_public_key)
+            .unwrap();
+
+        // Verify certificate properties
+        assert_eq!(cert.cert_type(), CertType::User);
+        assert!(cert.key_id().starts_with("user-testuser-"));
+
+        // Verify principals
+        let principals: Vec<&str> = cert
+            .valid_principals()
+            .into_iter()
+            .map(|s| s.as_str())
+            .collect();
+        assert_eq!(principals.len(), 2);
+        assert!(principals.contains(&"testuser"));
+        assert!(principals.contains(&"admin"));
+
+        // Verify extensions
+        let extensions: Vec<(&str, &str)> = cert
+            .extensions()
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.as_str()))
+            .collect();
+        assert!(extensions.iter().any(|(k, _)| *k == "permit-pty"));
+        assert!(
+            extensions
+                .iter()
+                .any(|(k, _)| *k == "permit-port-forwarding")
+        );
+    }
+
+    /// Tests that `sign_certificate` creates certificates with correct validity period.
+    #[test]
+    fn test_sign_certificate_validity() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let base_path = temp_dir.path();
+
+        // Create CA key
+        let ca_key = PrivateKey::random(&mut OsRng, Algorithm::Ed25519).unwrap();
+        let ca_key_openssh = ca_key.to_openssh(ssh_key::LineEnding::LF).unwrap();
+        let ca_key_path = base_path.join("ca_key");
+        std::fs::write(&ca_key_path, ca_key_openssh.as_bytes()).unwrap();
+
+        // Create user list
+        let user_list = r#"[users]"#;
+        let user_list_path = base_path.join("user.toml");
+        std::fs::write(&user_list_path, user_list).unwrap();
+
+        // Create user template with 7 days validity
+        let user_template = r#"
+validity_in_days = 7
+principals = ["{{ user_name }}"]
+extensions = []
+"#;
+        let user_template_path = base_path.join("user_default.toml");
+        std::fs::write(&user_template_path, user_template).unwrap();
+
+        let ca_config = config::Ca {
+            user_list_file: user_list_path,
+            ca_key: ca_key_path,
+            default_user_template: user_template_path,
+            host_inventory: base_path.join("hosts"),
+        };
+
+        let authority = CertificateAuthority::new(&ca_config).unwrap();
+        let subject_key = PrivateKey::random(&mut OsRng, Algorithm::Ed25519).unwrap();
+        let subject_public_key = subject_key.public_key();
+
+        let before_signing = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        let cert = authority
+            .sign_certificate("testuser", subject_public_key)
+            .unwrap();
+
+        let after_signing = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        // Valid after should be around the current time
+        assert!(cert.valid_after() >= before_signing);
+        assert!(cert.valid_after() <= after_signing);
+
+        // Valid before should be 7 days (604800 seconds) after valid_after
+        let expected_duration = 7 * 86400;
+        let actual_duration = cert.valid_before() - cert.valid_after();
+        assert_eq!(actual_duration, expected_duration);
+    }
+
+    /// Tests that `check_public_key` returns the correct hostname for a known key.
+    #[test]
+    fn test_check_public_key_found() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let base_path = temp_dir.path();
+
+        // Create CA key
+        let ca_key = PrivateKey::random(&mut OsRng, Algorithm::Ed25519).unwrap();
+        let ca_key_openssh = ca_key.to_openssh(ssh_key::LineEnding::LF).unwrap();
+        let ca_key_path = base_path.join("ca_key");
+        std::fs::write(&ca_key_path, ca_key_openssh.as_bytes()).unwrap();
+
+        // Create host inventory
+        let host_inventory = base_path.join("hosts");
+        std::fs::create_dir(&host_inventory).unwrap();
+
+        // Create a host config with a known key
+        let host_key = PrivateKey::random(&mut OsRng, Algorithm::Ed25519).unwrap();
+        let host_public_key_str = host_key.public_key().to_openssh().unwrap();
+
+        let host_config = format!(
+            r#"
+public_key = "{}"
+validity_in_days = 30
+hostnames = ["myserver.example.com"]
+extensions = []
+"#,
+            host_public_key_str
+        );
+
+        std::fs::write(host_inventory.join("myserver.toml"), host_config).unwrap();
+
+        let ca_config = config::Ca {
+            user_list_file: base_path.join("user.toml"),
+            ca_key: ca_key_path,
+            default_user_template: base_path.join("user_default.toml"),
+            host_inventory,
+        };
+
+        let authority = CertificateAuthority::new(&ca_config).unwrap();
+
+        // Extract just the key type and data (first two fields)
+        let key_parts: Vec<&str> = host_public_key_str.split_whitespace().collect();
+        let search_key = format!("{} {}", key_parts[0], key_parts[1]);
+
+        let result = authority.check_public_key(&search_key);
+        assert_eq!(result, Some("myserver".to_string()));
+    }
+
+    /// Tests that `check_public_key` returns None for an unknown key.
+    #[test]
+    fn test_check_public_key_not_found() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let base_path = temp_dir.path();
+
+        // Create CA key
+        let ca_key = PrivateKey::random(&mut OsRng, Algorithm::Ed25519).unwrap();
+        let ca_key_openssh = ca_key.to_openssh(ssh_key::LineEnding::LF).unwrap();
+        let ca_key_path = base_path.join("ca_key");
+        std::fs::write(&ca_key_path, ca_key_openssh.as_bytes()).unwrap();
+
+        // Create empty host inventory
+        let host_inventory = base_path.join("hosts");
+        std::fs::create_dir(&host_inventory).unwrap();
+
+        let ca_config = config::Ca {
+            user_list_file: base_path.join("user.toml"),
+            ca_key: ca_key_path,
+            default_user_template: base_path.join("user_default.toml"),
+            host_inventory,
+        };
+
+        let authority = CertificateAuthority::new(&ca_config).unwrap();
+
+        // Search for a key that doesn't exist
+        let unknown_key = PrivateKey::random(&mut OsRng, Algorithm::Ed25519).unwrap();
+        let unknown_public_key_str = unknown_key.public_key().to_openssh().unwrap();
+        let key_parts: Vec<&str> = unknown_public_key_str.split_whitespace().collect();
+        let search_key = format!("{} {}", key_parts[0], key_parts[1]);
+
+        let result = authority.check_public_key(&search_key);
+        assert_eq!(result, None);
+    }
 }

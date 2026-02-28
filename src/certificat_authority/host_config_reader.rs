@@ -181,3 +181,223 @@ fn read_config(file: &str) -> Result<HostConfig> {
 
     Ok(config)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::io::Write;
+    use tempfile::TempDir;
+
+    /// Tests that `ensure_path_within_directory` accepts a valid path within the base directory.
+    #[test]
+    fn test_ensure_path_within_directory_valid() {
+        let temp_dir = TempDir::new().unwrap();
+        let base_path = temp_dir.path();
+
+        // Create a file within the base directory
+        let valid_file = base_path.join("valid.toml");
+        fs::write(&valid_file, "test").unwrap();
+
+        let result = ensure_path_within_directory(&valid_file, base_path);
+        assert!(result.is_ok(), "Valid path should be accepted");
+        assert_eq!(result.unwrap(), valid_file.canonicalize().unwrap());
+    }
+
+    /// Tests that `ensure_path_within_directory` rejects path traversal attempts using `..`
+    #[test]
+    fn test_ensure_path_within_directory_rejects_traversal() {
+        let temp_dir = TempDir::new().unwrap();
+        let base_path = temp_dir.path();
+
+        // Create a file outside the base directory
+        let parent_dir = base_path.parent().unwrap();
+        let outside_file = parent_dir.join("outside.toml");
+        fs::write(&outside_file, "test").unwrap();
+
+        // Try to access it using .. from within base_path
+        let traversal_path = base_path.join("..").join("outside.toml");
+
+        let result = ensure_path_within_directory(&traversal_path, base_path);
+        assert!(result.is_err(), "Path traversal should be rejected");
+        assert!(
+            result.unwrap_err().to_string().contains("path traversal"),
+            "Error should mention path traversal"
+        );
+    }
+
+    /// Tests that `ensure_path_within_directory` rejects absolute paths outside the base directory.
+    #[test]
+    fn test_ensure_path_within_directory_rejects_absolute_outside() {
+        let temp_dir1 = TempDir::new().unwrap();
+        let temp_dir2 = TempDir::new().unwrap();
+
+        let base_path = temp_dir1.path();
+        let outside_file = temp_dir2.path().join("outside.toml");
+        fs::write(&outside_file, "test").unwrap();
+
+        let result = ensure_path_within_directory(&outside_file, base_path);
+        assert!(
+            result.is_err(),
+            "Absolute path outside base should be rejected"
+        );
+        assert!(
+            result.unwrap_err().to_string().contains("path traversal"),
+            "Error should mention path traversal"
+        );
+    }
+
+    /// Tests that `ensure_path_within_directory` handles symlinks correctly.
+    /// A symlink pointing outside the base directory should be rejected.
+    #[test]
+    #[cfg(unix)]
+    fn test_ensure_path_within_directory_rejects_symlink_escape() {
+        use std::os::unix::fs::symlink;
+
+        let temp_dir = TempDir::new().unwrap();
+        let base_path = temp_dir.path();
+
+        // Create a file outside the base directory
+        let parent_dir = base_path.parent().unwrap();
+        let outside_file = parent_dir.join("outside.toml");
+        fs::write(&outside_file, "test").unwrap();
+
+        // Create a symlink inside base_path that points to the outside file
+        let symlink_path = base_path.join("symlink.toml");
+        symlink(&outside_file, &symlink_path).unwrap();
+
+        let result = ensure_path_within_directory(&symlink_path, base_path);
+        assert!(result.is_err(), "Symlink escape should be rejected");
+        assert!(
+            result.unwrap_err().to_string().contains("path traversal"),
+            "Error should mention path traversal"
+        );
+    }
+
+    /// Tests that `ensure_path_within_directory` handles nested directories correctly.
+    #[test]
+    fn test_ensure_path_within_directory_nested_valid() {
+        let temp_dir = TempDir::new().unwrap();
+        let base_path = temp_dir.path();
+
+        // Create a nested directory structure
+        let nested_dir = base_path.join("subdir1").join("subdir2");
+        fs::create_dir_all(&nested_dir).unwrap();
+
+        let nested_file = nested_dir.join("nested.toml");
+        fs::write(&nested_file, "test").unwrap();
+
+        let result = ensure_path_within_directory(&nested_file, base_path);
+        assert!(result.is_ok(), "Nested valid path should be accepted");
+        assert_eq!(result.unwrap(), nested_file.canonicalize().unwrap());
+    }
+
+    /// Tests `find_config_by_public_key` with a matching key.
+    #[test]
+    fn test_find_config_by_public_key_match() {
+        let temp_dir = TempDir::new().unwrap();
+        let base_path = temp_dir.path();
+
+        // Create a host config file with a known public key
+        let test_key =
+            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGPvWF5WtFPlxWSSr4xSg5sAR7Wdp5zZd7hqmZvC4Fkj";
+        let host_config = format!(
+            r#"
+public_key = "{} comment"
+validity_in_days = 30
+hostnames = ["testhost.example.com"]
+extensions = []
+"#,
+            test_key
+        );
+
+        let config_file = base_path.join("testhost.toml");
+        let mut file = fs::File::create(&config_file).unwrap();
+        file.write_all(host_config.as_bytes()).unwrap();
+
+        let ca_config = config::Ca {
+            user_list_file: base_path.join("user.toml"),
+            ca_key: base_path.join("ca_key"),
+            default_user_template: base_path.join("user_default.toml"),
+            host_inventory: base_path.to_path_buf(),
+        };
+
+        let result = find_config_by_public_key(test_key, &ca_config);
+        assert!(result.is_some(), "Should find matching host config");
+
+        let (hostname, config) = result.unwrap();
+        assert_eq!(hostname, "testhost");
+        assert_eq!(config.validity_in_days, 30);
+        assert_eq!(config.hostnames, vec!["testhost.example.com"]);
+    }
+
+    /// Tests `find_config_by_public_key` with a non-matching key.
+    #[test]
+    fn test_find_config_by_public_key_no_match() {
+        let temp_dir = TempDir::new().unwrap();
+        let base_path = temp_dir.path();
+
+        // Create a host config file with a different public key
+        let stored_key =
+            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGPvWF5WtFPlxWSSr4xSg5sAR7Wdp5zZd7hqmZvC4Fkj";
+        let search_key =
+            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDifferentKeyDataHereXXXXXXXXXXXXXXXXXXXXX";
+
+        let host_config = format!(
+            r#"
+public_key = "{} comment"
+validity_in_days = 30
+hostnames = ["testhost.example.com"]
+extensions = []
+"#,
+            stored_key
+        );
+
+        let config_file = base_path.join("testhost.toml");
+        let mut file = fs::File::create(&config_file).unwrap();
+        file.write_all(host_config.as_bytes()).unwrap();
+
+        let ca_config = config::Ca {
+            user_list_file: base_path.join("user.toml"),
+            ca_key: base_path.join("ca_key"),
+            default_user_template: base_path.join("user_default.toml"),
+            host_inventory: base_path.to_path_buf(),
+        };
+
+        let result = find_config_by_public_key(search_key, &ca_config);
+        assert!(result.is_none(), "Should not find non-matching key");
+    }
+
+    /// Tests `find_config_by_public_key` with a malformed key in config.
+    #[test]
+    fn test_find_config_by_public_key_malformed_key() {
+        let temp_dir = TempDir::new().unwrap();
+        let base_path = temp_dir.path();
+
+        // Create a host config file with a malformed public key (missing key data)
+        let host_config = r#"
+public_key = "ssh-ed25519"
+validity_in_days = 30
+hostnames = ["testhost.example.com"]
+extensions = []
+"#;
+
+        let config_file = base_path.join("testhost.toml");
+        let mut file = fs::File::create(&config_file).unwrap();
+        file.write_all(host_config.as_bytes()).unwrap();
+
+        let ca_config = config::Ca {
+            user_list_file: base_path.join("user.toml"),
+            ca_key: base_path.join("ca_key"),
+            default_user_template: base_path.join("user_default.toml"),
+            host_inventory: base_path.to_path_buf(),
+        };
+
+        let search_key =
+            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGPvWF5WtFPlxWSSr4xSg5sAR7Wdp5zZd7hqmZvC4Fkj";
+
+        // Should handle malformed key gracefully and not find a match
+        let result = find_config_by_public_key(search_key, &ca_config);
+        assert!(result.is_none(), "Should not match malformed key");
+    }
+}
