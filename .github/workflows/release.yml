@@ -1,0 +1,216 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v26
+
+      - name: Configure Git
+        run: |
+          git config user.name "agent"
+          git config user.email "agent@agents"
+          git config commit.gpgsign false
+          git config gpg.format ssh
+          git config user.signingkey ""
+
+      - name: Extract version and detect pre-release
+        id: version
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          VERSION="${TAG#v}"
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          
+          if [[ "$TAG" =~ -(alpha|beta|rc) ]]; then
+            echo "prerelease=true" >> $GITHUB_OUTPUT
+            echo "Pre-release detected: $TAG"
+          else
+            echo "prerelease=false" >> $GITHUB_OUTPUT
+            echo "Stable release detected: $TAG"
+          fi
+
+      - name: Update version in Cargo.toml
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          sed -i "3s/version = \".*\"/version = \"$VERSION\"/" Cargo.toml
+          echo "Updated Cargo.toml to version $VERSION"
+          grep "^version" Cargo.toml | head -1
+
+      - name: Update version in flake.nix
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          sed -i "30s/version = \".*\"/version = \"$VERSION\"/" flake.nix
+          sed -i "108s/version = \".*\"/version = \"$VERSION\"/" flake.nix
+          sed -i "165s/version = \".*\"/version = \"$VERSION\"/" flake.nix
+          echo "Updated flake.nix to version $VERSION"
+          grep -n "version = \"$VERSION\"" flake.nix
+
+      - name: Commit version changes
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          git add Cargo.toml flake.nix
+          git commit -m "chore: bump version to $VERSION"
+
+      - name: Update CHANGELOG.md
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          TAG="${{ steps.version.outputs.tag }}"
+          PRERELEASE="${{ steps.version.outputs.prerelease }}"
+          DATE=$(date +%Y-%m-%d)
+          
+          if [[ "$PRERELEASE" == "true" ]]; then
+            echo "Adding pre-release section for $VERSION"
+            awk -v version="$VERSION" -v date="$DATE" '
+              /## \[Unreleased\]/ {
+                print
+                while (getline && !/^## /) print
+                print ""
+                print "## [" version "] - " date
+                print ""
+                next
+              }
+              { print }
+            ' CHANGELOG.md > CHANGELOG.tmp
+            mv CHANGELOG.tmp CHANGELOG.md
+          else
+            echo "Updating CHANGELOG.md for stable release $VERSION"
+            awk -v version="$VERSION" -v date="$DATE" '
+              !replaced && /## \[Unreleased\]/ {
+                print "## [Unreleased]"
+                print ""
+                print "### Added"
+                print "### Changed"
+                print "### Deprecated"
+                print "### Removed"
+                print "### Fixed"
+                print "### Security"
+                print ""
+                print "## [" version "] - " date
+                replaced=1
+                next
+              }
+              { print }
+            ' CHANGELOG.md > CHANGELOG.tmp
+            mv CHANGELOG.tmp CHANGELOG.md
+          fi
+          
+          echo "CHANGELOG.md updated:"
+          head -20 CHANGELOG.md
+
+      - name: Commit changelog changes
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          git add CHANGELOG.md
+          git commit -m "docs: update CHANGELOG for v$VERSION"
+
+      - name: Run tests
+        run: |
+          echo "Running nix flake check..."
+          nix flake check
+
+      - name: Build .deb packages
+        run: |
+          echo "Building server package..."
+          nix build .#deb-server -o result-server
+          echo "Building client package..."
+          nix build .#deb-client -o result-client
+          echo "Built packages:"
+          ls -lh result-server/*.deb result-client/*.deb
+
+      - name: Extract changelog for this version
+        id: changelog
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          echo "Extracting changelog section for version $VERSION"
+          NOTES=$(awk -v version="$VERSION" '
+            /## \['"$VERSION"'\]/ { found=1; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md)
+          
+          if [ -z "$NOTES" ]; then
+            echo "No changelog entries found for version $VERSION, using default message"
+            NOTES="Release $VERSION
+
+          See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/${{ steps.version.outputs.tag }}/CHANGELOG.md) for details."
+          fi
+          
+          echo "$NOTES" > release-notes.md
+          echo "Release notes:"
+          cat release-notes.md
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          VERSION="${{ steps.version.outputs.version }}"
+          PRERELEASE="${{ steps.version.outputs.prerelease }}"
+          
+          cat > final-release-notes.md << 'EOFNOTES'
+          ## Debian Packages
+          
+          Download the appropriate .deb package for your system:
+          
+          EOFNOTES
+          
+          cat >> final-release-notes.md << EOFNOTES2
+          - **Server**: \`ssh-ca-server_${VERSION}_amd64.deb\` - SSH Certificate Authority server
+          - **Client**: \`ssh-ca-client_${VERSION}_all.deb\` - Client scripts for certificate signing
+          
+          ### Installation
+          
+          \`\`\`bash
+          # Install server (Debian/Ubuntu)
+          sudo dpkg -i ssh-ca-server_${VERSION}_amd64.deb
+          sudo apt-get install -f
+          
+          # Install client (Debian/Ubuntu)
+          sudo dpkg -i ssh-ca-client_${VERSION}_all.deb
+          \`\`\`
+          
+          See the [Setup Guide](https://github.com/${{ github.repository }}/blob/$TAG/documentation/setup.md) for configuration instructions.
+          
+          ---
+          
+          ## Changelog
+          
+          EOFNOTES2
+          
+          cat release-notes.md >> final-release-notes.md
+          
+          echo "Creating release $TAG..."
+          
+          if [[ "$PRERELEASE" == "true" ]]; then
+            gh release create "$TAG" \
+              --title "$TAG" \
+              --notes-file final-release-notes.md \
+              --prerelease \
+              result-server/*.deb \
+              result-client/*.deb
+            echo "Pre-release created: $TAG"
+          else
+            gh release create "$TAG" \
+              --title "$TAG" \
+              --notes-file final-release-notes.md \
+              result-server/*.deb \
+              result-client/*.deb
+            echo "Release created: $TAG"
+          fi
+          
+          echo "Release URL: https://github.com/${{ github.repository }}/releases/tag/$TAG"
