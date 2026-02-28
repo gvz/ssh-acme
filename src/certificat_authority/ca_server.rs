@@ -199,3 +199,196 @@ impl CaServer {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::certificat_authority::config;
+    use ssh_key::{Algorithm, private::PrivateKey, rand_core::OsRng};
+    use std::fs;
+    use tempfile::TempDir;
+
+    /// Helper function to create a test CA server with minimal configuration.
+    fn create_test_ca_server() -> (CaServer, TempDir) {
+        let temp_dir = TempDir::new().unwrap();
+        let base_path = temp_dir.path();
+
+        // Create CA private key
+        let ca_key = PrivateKey::random(&mut OsRng, Algorithm::Ed25519).unwrap();
+        let ca_key_openssh = ca_key.to_openssh(ssh_key::LineEnding::LF).unwrap();
+        let ca_key_path = base_path.join("ca_key");
+        fs::write(&ca_key_path, ca_key_openssh.as_bytes()).unwrap();
+
+        // Create minimal user list
+        let user_list = r#"
+[users]
+"#;
+        let user_list_path = base_path.join("user.toml");
+        fs::write(&user_list_path, user_list).unwrap();
+
+        // Create default user template
+        let user_template = r#"
+validity_in_days = 1
+principals = ["{{ user_name }}"]
+extensions = ["permit-pty"]
+"#;
+        let user_template_path = base_path.join("user_default.toml");
+        fs::write(&user_template_path, user_template).unwrap();
+
+        // Create host inventory directory
+        let host_inventory = base_path.join("hosts");
+        fs::create_dir(&host_inventory).unwrap();
+
+        let ca_config = config::Ca {
+            user_list_file: user_list_path,
+            ca_key: ca_key_path,
+            default_user_template: user_template_path,
+            host_inventory,
+        };
+
+        let ca = CertificateAuthority::new(&ca_config).unwrap();
+        let server = CaServer::new(
+            base_path.join("ca.sock").to_str().unwrap().to_string(),
+            ca,
+            "test-token-12345".to_string(),
+        );
+
+        (server, temp_dir)
+    }
+
+    /// Tests that `handle_request` successfully signs a user certificate.
+    #[test]
+    fn test_handle_request_sign_certificate() {
+        let (server, _temp_dir) = create_test_ca_server();
+
+        let user_key = PrivateKey::random(&mut OsRng, Algorithm::Ed25519).unwrap();
+        let user_public_key = user_key.public_key().clone();
+
+        let request = CaRequest::SignCertificate {
+            user: "testuser".to_string(),
+            public_key: user_public_key.clone(),
+        };
+
+        let response = server.handle_request(request);
+        assert!(
+            response.is_ok(),
+            "Should successfully sign user certificate"
+        );
+
+        match response.unwrap() {
+            CaResponse::SignedCertificate(cert) => {
+                assert_eq!(cert.public_key(), user_public_key.key_data());
+                assert!(cert.key_id().starts_with("user-testuser-"));
+            }
+            _ => panic!("Expected SignedCertificate response"),
+        }
+    }
+
+    /// Tests that `handle_request` handles CheckPublicKey requests.
+    #[test]
+    fn test_handle_request_check_public_key() {
+        let (server, _temp_dir) = create_test_ca_server();
+
+        let test_key = PrivateKey::random(&mut OsRng, Algorithm::Ed25519).unwrap();
+        let test_public_key = test_key.public_key().clone();
+
+        let request = CaRequest::CheckPublicKey {
+            public_key: test_public_key,
+        };
+
+        let response = server.handle_request(request);
+        assert!(response.is_ok(), "Should handle check public key request");
+
+        match response.unwrap() {
+            CaResponse::KeyFound(None) => {
+                // Expected: key not found since we didn't set up any host configs
+            }
+            _ => panic!("Expected KeyFound(None) response"),
+        }
+    }
+
+    /// Tests that `handle_request` successfully signs a host certificate when the key matches.
+    #[test]
+    fn test_handle_request_sign_host_certificate() {
+        let (server, temp_dir) = create_test_ca_server();
+
+        // Create a host config file
+        let host_key = PrivateKey::random(&mut OsRng, Algorithm::Ed25519).unwrap();
+        let host_public_key = host_key.public_key().clone();
+        let host_public_key_str = host_public_key.to_openssh().unwrap();
+
+        let host_config = format!(
+            r#"
+public_key = "{}"
+validity_in_days = 30
+hostnames = ["testhost.example.com"]
+extensions = []
+"#,
+            host_public_key_str
+        );
+
+        let config_file = temp_dir.path().join("hosts").join("testhost.toml");
+        fs::write(&config_file, host_config).unwrap();
+
+        let request = CaRequest::SignHostCertificate {
+            host_name: "testhost".to_string(),
+            public_key: host_public_key.clone(),
+        };
+
+        let response = server.handle_request(request);
+        assert!(
+            response.is_ok(),
+            "Should successfully sign host certificate"
+        );
+
+        match response.unwrap() {
+            CaResponse::SignedCertificate(cert) => {
+                assert_eq!(cert.public_key(), host_public_key.key_data());
+                assert!(cert.key_id().starts_with("host-testhost-"));
+            }
+            _ => panic!("Expected SignedCertificate response"),
+        }
+    }
+
+    /// Tests that `handle_request` rejects host certificate signing when the key doesn't match.
+    #[test]
+    fn test_handle_request_sign_host_certificate_wrong_key() {
+        let (server, temp_dir) = create_test_ca_server();
+
+        // Create a host config file with one key
+        let config_key = PrivateKey::random(&mut OsRng, Algorithm::Ed25519).unwrap();
+        let config_public_key_str = config_key.public_key().to_openssh().unwrap();
+
+        let host_config = format!(
+            r#"
+public_key = "{}"
+validity_in_days = 30
+hostnames = ["testhost.example.com"]
+extensions = []
+"#,
+            config_public_key_str
+        );
+
+        let config_file = temp_dir.path().join("hosts").join("testhost.toml");
+        fs::write(&config_file, host_config).unwrap();
+
+        // Try to sign with a different key
+        let different_key = PrivateKey::random(&mut OsRng, Algorithm::Ed25519).unwrap();
+        let different_public_key = different_key.public_key().clone();
+
+        let request = CaRequest::SignHostCertificate {
+            host_name: "testhost".to_string(),
+            public_key: different_public_key,
+        };
+
+        let response = server.handle_request(request);
+        assert!(response.is_err(), "Should reject mismatched host key");
+        assert!(
+            response
+                .unwrap_err()
+                .to_string()
+                .contains("wrong public key"),
+            "Error should indicate wrong public key"
+        );
+    }
+}
