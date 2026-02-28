@@ -96,3 +96,112 @@ impl CaClient {
         Ok(response)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+
+    /// Tests that the counter starts at 0 and increments correctly.
+    #[test]
+    fn test_counter_starts_at_zero() {
+        let client = CaClient::new("/tmp/test.sock".to_string(), "test-token".to_string());
+
+        // Counter should start at 0
+        assert_eq!(client.counter.load(Ordering::SeqCst), 0);
+    }
+
+    /// Tests that the counter increments with each call (simulated).
+    #[test]
+    fn test_counter_increment_behavior() {
+        let client = CaClient::new("/tmp/test.sock".to_string(), "test-token".to_string());
+
+        // Simulate what send_request does: fetch_add(1) + 1
+        let counter1 = client.counter.fetch_add(1, Ordering::SeqCst) + 1;
+        assert_eq!(counter1, 1, "First request should use counter 1");
+
+        let counter2 = client.counter.fetch_add(1, Ordering::SeqCst) + 1;
+        assert_eq!(counter2, 2, "Second request should use counter 2");
+
+        let counter3 = client.counter.fetch_add(1, Ordering::SeqCst) + 1;
+        assert_eq!(counter3, 3, "Third request should use counter 3");
+    }
+
+    /// Tests that cloned clients share the same counter.
+    #[test]
+    fn test_cloned_clients_share_counter() {
+        let client1 = CaClient::new("/tmp/test.sock".to_string(), "test-token".to_string());
+
+        let client2 = client1.clone();
+
+        // Increment via client1
+        let counter1 = client1.counter.fetch_add(1, Ordering::SeqCst) + 1;
+        assert_eq!(counter1, 1);
+
+        // Increment via client2 - should see the update from client1
+        let counter2 = client2.counter.fetch_add(1, Ordering::SeqCst) + 1;
+        assert_eq!(counter2, 2, "Cloned client should share the same counter");
+
+        // Both should now see the same value
+        assert_eq!(client1.counter.load(Ordering::SeqCst), 2);
+        assert_eq!(client2.counter.load(Ordering::SeqCst), 2);
+    }
+
+    /// Tests that the counter is thread-safe across concurrent increments.
+    #[test]
+    fn test_counter_thread_safety() {
+        use std::thread;
+
+        let client = Arc::new(CaClient::new(
+            "/tmp/test.sock".to_string(),
+            "test-token".to_string(),
+        ));
+
+        let mut handles = vec![];
+
+        // Spawn 10 threads, each incrementing 100 times
+        for _ in 0..10 {
+            let client_clone = Arc::clone(&client);
+            let handle = thread::spawn(move || {
+                for _ in 0..100 {
+                    client_clone.counter.fetch_add(1, Ordering::SeqCst);
+                }
+            });
+            handles.push(handle);
+        }
+
+        // Wait for all threads to complete
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        // Total increments should be 10 * 100 = 1000
+        assert_eq!(
+            client.counter.load(Ordering::SeqCst),
+            1000,
+            "Counter should be thread-safe"
+        );
+    }
+
+    /// Tests that the counter handles near-max values correctly.
+    /// Note: At u64::MAX, adding 1 causes wrapping.
+    #[test]
+    fn test_counter_near_max() {
+        let client = CaClient::new("/tmp/test.sock".to_string(), "test-token".to_string());
+
+        // Set counter to near max value
+        client.counter.store(u64::MAX - 2, Ordering::SeqCst);
+
+        let counter1 = client.counter.fetch_add(1, Ordering::SeqCst) + 1;
+        assert_eq!(counter1, u64::MAX - 1);
+
+        let counter2 = client.counter.fetch_add(1, Ordering::SeqCst) + 1;
+        assert_eq!(counter2, u64::MAX);
+
+        // At u64::MAX, fetch_add returns u64::MAX, then adding 1 wraps to 0
+        let fetched = client.counter.fetch_add(1, Ordering::SeqCst);
+        assert_eq!(fetched, u64::MAX, "fetch_add should return u64::MAX");
+        let counter3 = fetched.wrapping_add(1);
+        assert_eq!(counter3, 0, "Counter wraps to 0 after u64::MAX");
+    }
+}
