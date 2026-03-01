@@ -2660,13 +2660,10 @@ name = "ssh_ca_server-fuzz"
 version = "0.0.0"
 dependencies = [
  "libfuzzer-sys",
- "minijinja",
- "serde",
  "serde_json",
  "ssh-key",
  "ssh_ca_server",
  "tempfile",
- "toml",
 ]
 
 [[package]]

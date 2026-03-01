@@ -27,6 +27,7 @@
           "rustfmt"
           "clippy"
           "rust-src"
+          "llvm-tools-preview"
         ];
         naersk-lib = pkgs.callPackage naersk {
           cargo = rust-toolchain;
@@ -381,6 +382,9 @@
         # The old `defaultPackage` for compatibility if needed elsewhere
         defaultPackage = app;
 
+        nativeBuildInputs = with pkgs; [
+          autoPatchelfHook
+        ];
         devShell =
           with pkgs;
           mkShell {
@@ -403,12 +407,21 @@
               pcsclite
               pam
               gnumake
+              grcov
               act
             ];
             shellHook = ''
               export LIBCLANG_PATH="${llvmPackages.libclang.lib}/lib";
+              export PATH="$(rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin:$PATH"
             '';
             RUST_SRC_PATH = "${rust-toolchain}/lib/rustlib/src/rust/library";
+            LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
+            LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [
+              pkgs.llvmPackages.libclang.lib
+              pkgs.pam
+              pkgs.systemd
+              pkgs.stdenv.cc.cc.lib
+            ];
           };
 
         nixosModules.default = sshCaServerModule;
