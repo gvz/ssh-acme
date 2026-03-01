@@ -2,7 +2,7 @@ name: Build Docker image
 
 on:
   push:
-    branches: [main, add-docker-build-workflow]
+    branches: [main]
     tags: ["v*"]
 
 jobs:

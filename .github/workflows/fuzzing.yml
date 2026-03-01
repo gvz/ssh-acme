@@ -2,6 +2,8 @@ name: "Run fuzzing for 10min"
 
 on:
   push:
+    branches: [main]
+    tags: ["v*"]
 
 permissions:
   contents: read
