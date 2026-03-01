@@ -3,6 +3,10 @@
     naersk.url = "github:nix-community/naersk/master";
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     utils.url = "github:numtide/flake-utils";
+    fenix = {
+      url = "github:nix-community/fenix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
@@ -11,12 +15,23 @@
       nixpkgs,
       utils,
       naersk,
+      fenix,
     }:
     utils.lib.eachDefaultSystem (
       system:
       let
         pkgs = import nixpkgs { inherit system; };
-        naersk-lib = pkgs.callPackage naersk { };
+        rust-toolchain = fenix.packages.${system}.latest.withComponents [
+          "rustc"
+          "cargo"
+          "rustfmt"
+          "clippy"
+          "rust-src"
+        ];
+        naersk-lib = pkgs.callPackage naersk {
+          cargo = rust-toolchain;
+          rustc = rust-toolchain;
+        };
         lib = nixpkgs.lib;
         russh-src = pkgs.fetchgit {
           url = "https://github.com/gvz/russh.git";
@@ -44,6 +59,11 @@
             pam
           ];
           LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
+          LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [
+            pkgs.llvmPackages.libclang.lib
+            pkgs.pam
+            pkgs.systemd
+          ];
           postPatch = ''
             substituteInPlace Cargo.toml \
                 --replace 'git = "https://github.com/gvz/russh.git"' \
@@ -362,11 +382,8 @@
           with pkgs;
           mkShell {
             buildInputs = [
-              cargo
-              rustc
-              rustfmt
+              rust-toolchain
               pre-commit
-              rustPackages.clippy
               llvm
               clang
               libclang
@@ -374,7 +391,6 @@
               lldb
               openssl
               openssl.dev
-              rust-analyzer
               cargo-nextest
               pkg-config
               cargo-vet
@@ -389,7 +405,7 @@
             shellHook = ''
               export LIBCLANG_PATH="${llvmPackages.libclang.lib}/lib";
             '';
-            RUST_SRC_PATH = rustPlatform.rustLibSrc;
+            RUST_SRC_PATH = "${rust-toolchain}/lib/rustlib/src/rust/library";
           };
 
         nixosModules.default = sshCaServerModule;
