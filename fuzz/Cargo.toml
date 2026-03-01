@@ -12,9 +12,6 @@ libfuzzer-sys = "0.4"
 serde_json = "1.0"
 ssh-key = { version = "0.6.7", features = ["ed25519"] }
 tempfile = "3.10"
-minijinja = "2.16.0"
-toml = "0.8"
-serde = { version = "1.0", features = ["derive"] }
 
 [dependencies.ssh_ca_server]
 path = ".."
@@ -35,11 +32,6 @@ doc = false
 [[bin]]
 name = "fuzz_cert_signing"
 path = "fuzz_targets/fuzz_cert_signing.rs"
-doc = false
-
-[[bin]]
-name = "fuzz_config_parsing"
-path = "fuzz_targets/fuzz_config_parsing.rs"
 doc = false
 
 [[bin]]
