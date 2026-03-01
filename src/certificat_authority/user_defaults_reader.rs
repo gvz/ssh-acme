@@ -15,6 +15,12 @@ use serde::Deserialize;
 
 use crate::certificat_authority::config;
 
+/// Maximum allowed size for a user certificate template file in bytes.
+/// Templates are small TOML files; 64 KiB is generous. This limit
+/// defends against adversarial template content that could trigger
+/// unbounded memory allocation during minijinja compilation.
+const MAX_TEMPLATE_SIZE: usize = 64 * 1024;
+
 /// Represents the user-specific certificate parameters.
 #[derive(Deserialize, Debug)]
 pub struct UserDefaults {
@@ -95,6 +101,20 @@ pub fn read_user_defaults(user: &str, config: &config::Ca) -> Result<UserDefault
             error!("failed to read user template, {:?}: {}", &template_path, e);
             e
         })?;
+
+    if template_text.len() > MAX_TEMPLATE_SIZE {
+        error!(
+            "user template exceeds maximum size ({} bytes): {:?}",
+            template_text.len(),
+            &template_path
+        );
+        anyhow::bail!(
+            "user template {:?} exceeds maximum allowed size of {} bytes",
+            &template_path,
+            MAX_TEMPLATE_SIZE
+        );
+    }
+
     let mut jinja_env = Environment::new();
     jinja_env.add_template(user, &template_text)?;
     let user_template = jinja_env.get_template(user)?;

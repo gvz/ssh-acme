@@ -7,6 +7,9 @@ use minijinja::{Environment, context};
 use serde::Deserialize;
 use toml;
 
+/// Maximum allowed size for a certificate config template file in bytes.
+const MAX_TEMPLATE_SIZE: usize = 64 * 1024;
+
 /// Parsed certificate configuration from a Jinja-templated TOML file.
 #[derive(Deserialize, Debug)]
 pub struct CertificateConfig {
@@ -38,19 +41,25 @@ pub fn read_certificate_config(file_path: &str) -> Result<CertificateConfig> {
     let mut config = String::new();
     let _ = config_file.read_to_string(&mut config)?;
 
+    if config.len() > MAX_TEMPLATE_SIZE {
+        anyhow::bail!(
+            "certificate config template {:?} exceeds maximum allowed size of {} bytes",
+            file_path,
+            MAX_TEMPLATE_SIZE
+        );
+    }
+
     let mut env = Environment::new();
-    env.add_template("config", &config).unwrap();
-    let tmpl = env.get_template("config").unwrap();
+    env.add_template("config", &config)?;
+    let tmpl = env.get_template("config")?;
     let mut critical_options: HashMap<String, String> = HashMap::new();
     critical_options.insert("test".to_string(), "map".to_string());
-    let json = tmpl
-        .render(context!(
-        KeyID => 200,
-        Principals => vec!("test", "list"),
-        CriticalOptions => critical_options,
-        ValiditySpan => 24*30
-        ))
-        .unwrap();
+    let json = tmpl.render(context!(
+    KeyID => 200,
+    Principals => vec!("test", "list"),
+    CriticalOptions => critical_options,
+    ValiditySpan => 24*30
+    ))?;
 
     let config: CertificateConfig = toml::from_str(&json)?;
     Ok(config)
