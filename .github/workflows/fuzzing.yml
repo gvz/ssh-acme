@@ -3,13 +3,49 @@ name: "Run fuzzing for 10min"
 on:
   push:
 
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
 jobs:
-  nixos_end_to_end_test:
+  fuzzing_test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - uses: cachix/install-nix-action@v26
       - name: run fuzzing
         run: nix develop --command ./scripts/fuzz-all.sh -d 600
       - name: generate shell coverage report
         run: nix develop --command ./scripts/fuzz-coverage.sh --shell
+      - name: generate HTML coverage report
+        run: nix develop --command ./scripts/fuzz-coverage.sh --html
+      - name: upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-coverage-report
+          path: fuzz/coverage/report/
+
+  publish_coverage:
+    needs: fuzzing_test
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: download coverage report
+        uses: actions/download-artifact@v4
+        with:
+          name: fuzz-coverage-report
+          path: report/
+      - name: upload pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: report/
+      - name: deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
