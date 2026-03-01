@@ -1,0 +1,15 @@
+name: "Run fuzzing for 10min"
+
+on:
+  push:
+
+jobs:
+  nixos_end_to_end_test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: cachix/install-nix-action@v26
+      - name: run fuzzing
+        run: nix develop --command ./scripts/fuzz-all.sh -d 600
+      - name: generate shell coverage report
+        run: nix develop --command ./scripts/fuzz-coverage.sh --shell
