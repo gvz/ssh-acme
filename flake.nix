@@ -47,6 +47,9 @@
           release = true;
 
           src = ./.;
+          nativeBuildInputs = with pkgs; [
+            autoPatchelfHook
+          ];
           buildInputs = with pkgs; [
             llvm
             clang
@@ -449,8 +452,10 @@
             naersk-lib.buildPackage {
               pname = "ssh_ca_server-fuzz-smoke";
               src = fuzzSrc;
+              nativeBuildInputs = common.nativeBuildInputs;
               buildInputs = common.buildInputs;
               LIBCLANG_PATH = common.LIBCLANG_PATH;
+              LD_LIBRARY_PATH = common.LD_LIBRARY_PATH;
               doCheck = false;
               singleStep = true;
               RUSTC_BOOTSTRAP = "1";
