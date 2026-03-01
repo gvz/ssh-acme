@@ -244,12 +244,16 @@ pub enum CaRequest {
 }
 #[cfg(feature = "arbitrary")]
 fn arbitrary_public_key(u: &mut Unstructured) -> arbitrary::Result<PublicKey> {
-    // Replace this with however you want to generate a PublicKey
-    // Examples:
-
-    // Option 1: If PublicKey has a constructor from bytes
-    let key_bytes: [u8; 32] = u.arbitrary()?; // 32 bytes should be enough for a Ed25519 keys
-    PublicKey::from_bytes(&key_bytes).map_err(|_| arbitrary::Error::IncorrectFormat)
+    let key_bytes: [u8; 32] = u.arbitrary()?;
+    // Construct a valid Ed25519 verifying key from the raw bytes.
+    // `from_bytes` rejects points that are not on the curve, which is
+    // the correct behaviour — the fuzzer will simply try another input.
+    let verifying_key = ed25519_dalek::VerifyingKey::from_bytes(&key_bytes)
+        .map_err(|_| arbitrary::Error::IncorrectFormat)?;
+    let ed25519_pub = ssh_key::public::Ed25519PublicKey::from(verifying_key);
+    Ok(PublicKey::from(ssh_key::public::KeyData::Ed25519(
+        ed25519_pub,
+    )))
 }
 
 /// Represents a response from the Certificate Authority.

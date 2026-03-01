@@ -7,8 +7,9 @@ fuzz_target!(|data: &[u8]| {
     // Try to parse as SSH public key from raw bytes
     let _ = PublicKey::from_bytes(data);
 
-    // Try to parse as OpenSSH-format public key string
+    // Try to parse as OpenSSH-format public key string through the project's
+    // own wrapper so that project code is instrumented for coverage.
     if let Ok(s) = std::str::from_utf8(data) {
-        let _ = PublicKey::from_openssh(s);
+        let _ = ssh_ca_server::certificat_authority::key_from_openssh(s);
     }
 });

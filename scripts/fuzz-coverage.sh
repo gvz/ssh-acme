@@ -148,23 +148,23 @@ html)
     -show-line-counts-or-regions \
     -show-instantiations=false \
     -Xdemangler=rustfilt \
-    --ignore-filename-regex='\.cargo/registry|rustc|/nix/store' 2>/dev/null ||
+    --ignore-filename-regex='\.cargo/|rustc|/nix/store' 2>/dev/null ||
     "$LLVM_COV" show "$FIRST_BIN" "${EXTRA_OBJECT_ARGS[@]}" \
       -instr-profile="$MERGED_PROFDATA" \
       -format=html \
       -output-dir="$OUTPUT_DIR" \
       -show-line-counts-or-regions \
       -show-instantiations=false \
-      --ignore-filename-regex='\.cargo/registry|rustc|/nix/store'
+      --ignore-filename-regex='\.cargo/|rustc|/nix/store'
   echo "HTML report written to $OUTPUT_DIR/index.html"
   ;;
 shell)
   echo ""
   "$LLVM_COV" report "$FIRST_BIN" "${EXTRA_OBJECT_ARGS[@]}" \
     -instr-profile="$MERGED_PROFDATA" \
-    --ignore-filename-regex='\.cargo/registry|rustc|/nix/store' 2>/dev/null ||
+    --ignore-filename-regex='\.cargo/|rustc|/nix/store' 2>/dev/null ||
     "$LLVM_COV" report "$FIRST_BIN" "${EXTRA_OBJECT_ARGS[@]}" \
       -instr-profile="$MERGED_PROFDATA" \
-      --ignore-filename-regex='\.cargo/registry|rustc|/nix/store'
+      --ignore-filename-regex='\.cargo/|rustc|/nix/store'
   ;;
 esac
