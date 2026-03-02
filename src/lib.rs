@@ -14,8 +14,10 @@ use std::os::unix::fs::PermissionsExt;
 use std::process::Command;
 use tempfile::tempdir;
 
-mod ssh_server;
+pub mod ssh_server;
 use crate::ssh_server::SshCaServer;
+pub use ssh_server::host_key_signer::validate_hostname;
+pub use ssh_server::parse_exec_command;
 
 mod identiy_handlers;
 

@@ -14,6 +14,23 @@ use russh::server::Session;
 use std::sync::Arc;
 use tokio::sync::{Mutex, oneshot};
 
+/// Validates that a hostname is safe for use as a filesystem path component.
+///
+/// Rejects empty strings, path separators (`/`, `\`), parent-directory
+/// references (`..`), and embedded NUL bytes. This is defense-in-depth
+/// before the CA's own path-traversal checks.
+pub fn validate_hostname(host_name: &str) -> Result<(), String> {
+    if host_name.is_empty()
+        || host_name.contains('/')
+        || host_name.contains('\\')
+        || host_name.contains("..")
+        || host_name.contains('\0')
+    {
+        return Err(format!("invalid host name: '{}'", host_name));
+    }
+    Ok(())
+}
+
 /// An SSH client handler used to capture a remote server's public key during
 /// host key verification.
 pub struct ClientHandler {
@@ -48,13 +65,7 @@ pub async fn handle_sign_host_key(
     // Early validation: reject hostnames containing path traversal characters
     // before they reach the CA. This is defense in depth — the CA also validates
     // that resolved paths stay within the inventory directory.
-    if host_name.is_empty()
-        || host_name.contains('/')
-        || host_name.contains('\\')
-        || host_name.contains("..")
-        || host_name.contains('\0')
-    {
-        let error_message = format!("invalid host name: '{}'", host_name);
+    if let Err(error_message) = validate_hostname(&host_name) {
         error!("{}", &error_message);
         let _ = session.disconnect(russh::Disconnect::ByApplication, &error_message, "en");
         return Ok(());

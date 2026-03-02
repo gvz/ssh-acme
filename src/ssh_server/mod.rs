@@ -23,8 +23,21 @@ use crate::certificat_authority::{CaRequest, CaResponse};
 use crate::identiy_handlers::{Credential, UserAuthenticator};
 
 pub(crate) mod config;
-pub(crate) mod host_key_signer;
+pub mod host_key_signer;
 pub(crate) mod user_key_signer;
+
+/// Parses a raw exec-request payload into a command name and remaining arguments.
+///
+/// The input bytes are first decoded as lossy UTF-8, then split on whitespace.
+/// Returns the command name (or `""` if the payload is empty/whitespace-only) and
+/// the remaining whitespace-separated tokens.
+pub fn parse_exec_command(data: &[u8]) -> (String, Vec<String>) {
+    let command = String::from_utf8_lossy(data).to_string();
+    let mut parts = command.split_whitespace();
+    let command_name = parts.next().unwrap_or("").to_string();
+    let args: Vec<String> = parts.map(|s| s.to_string()).collect();
+    (command_name, args)
+}
 use config::SshServerConfig;
 
 /// The main SSH Certificate Authority server struct.
@@ -320,9 +333,7 @@ impl Handler for ConnectionHandler {
         data: &[u8],
         session: &mut Session,
     ) -> Result<(), Self::Error> {
-        let command = String::from_utf8_lossy(data);
-        let mut parts = command.split_whitespace();
-        let command_name = parts.next().unwrap_or("");
+        let (command_name, _args) = parse_exec_command(data);
         let pub_key = match self.public_key.clone() {
             None => return Err(Error::RequestDenied),
             Some(pubkey) => pubkey.to_openssh()?,
@@ -334,7 +345,7 @@ impl Handler for ConnectionHandler {
         };
         let args: Vec<&str> = vec![&hostname, &pub_key];
 
-        match command_name {
+        match command_name.as_str() {
             "sign_host_key" => {
                 debug!("found host key signing command");
                 host_key_signer::handle_sign_host_key(self, channel, args, session).await
