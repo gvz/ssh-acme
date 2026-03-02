@@ -39,3 +39,18 @@ doc = false
 name = "fuzz_ssh_protocol"
 path = "fuzz_targets/fuzz_ssh_protocol.rs"
 doc = false
+
+[[bin]]
+name = "fuzz_exec_request_parser"
+path = "fuzz_targets/fuzz_exec_request_parser.rs"
+doc = false
+
+[[bin]]
+name = "fuzz_hostname_validation"
+path = "fuzz_targets/fuzz_hostname_validation.rs"
+doc = false
+
+[[bin]]
+name = "fuzz_user_key_parsing"
+path = "fuzz_targets/fuzz_user_key_parsing.rs"
+doc = false
