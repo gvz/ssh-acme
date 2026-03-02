@@ -37,6 +37,56 @@ fuzz_target!(|request: CaRequest| {
     let host_inventory = base_path.join("hosts");
     fs::create_dir(&host_inventory).unwrap();
 
+    // Populate host inventory when the request targets a host, so the fuzzer
+    // can reach sign_host_certificate's key-comparison, cert-building, and
+    // signing code paths.
+    if let CaRequest::SignHostCertificate {
+        ref host_name,
+        ref public_key,
+    } = request
+    {
+        // Sanitize host_name for filesystem use (avoid path-traversal)
+        let safe_name = host_name.replace(['/', '\\', '\0'], "_");
+        let safe_name = if safe_name.is_empty() || safe_name.contains("..") {
+            "fuzz_host"
+        } else {
+            &safe_name
+        };
+
+        // Use the host_name length to decide which config variant to write.
+        // This lets the fuzzer explore three distinct code paths:
+        //   - matching key   → exercises cert-building + signing (lines 174-207)
+        //   - mismatched key → exercises CaError::WrongPublicKey  (lines 168-173)
+        //   - invalid key    → exercises config key parse failure  (lines 163-166)
+        let config_key = match host_name.len() % 3 {
+            0 => {
+                // Matching key — sign_host_certificate happy path
+                public_key
+                    .to_openssh()
+                    .unwrap_or_else(|_| "invalid".to_string())
+            }
+            1 => {
+                // Different key — key mismatch error path
+                let other_key = PrivateKey::random(&mut OsRng, Algorithm::Ed25519).unwrap();
+                other_key.public_key().to_openssh().unwrap()
+            }
+            _ => {
+                // Invalid key string — config key parse failure path
+                "not-a-valid-ssh-key".to_string()
+            }
+        };
+
+        let host_config = format!(
+            "public_key = \"{}\"\nvalidity_in_days = 30\nhostnames = [\"{}\"]\nextensions = []\n",
+            config_key.replace('\\', "\\\\").replace('"', "\\\""),
+            safe_name.replace('\\', "\\\\").replace('"', "\\\""),
+        );
+        let _ = fs::write(
+            host_inventory.join(format!("{}.toml", safe_name)),
+            host_config,
+        );
+    }
+
     let ca_config = CaConfig {
         user_list_file: user_list_path,
         default_user_template: default_path,

@@ -243,7 +243,7 @@ pub enum CaRequest {
     },
 }
 #[cfg(feature = "arbitrary")]
-fn arbitrary_public_key(u: &mut Unstructured) -> arbitrary::Result<PublicKey> {
+pub fn arbitrary_public_key(u: &mut Unstructured) -> arbitrary::Result<PublicKey> {
     let key_bytes: [u8; 32] = u.arbitrary()?;
     // Construct a valid Ed25519 verifying key from the raw bytes.
     // `from_bytes` rejects points that are not on the curve, which is
