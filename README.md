@@ -4,7 +4,7 @@ This project provides a self-hosted SSH Certificate Authority (CA), similar in s
 
 ## Setup Guide
 
-See **[Setup Guide](documentation/setup.md)** for a full walkthrough: prerequisites, building, key generation, configuration, running the server, and requesting your first certificate.
+See **[Setup Guide](documentation/overview.md)** for a full walkthrough: prerequisites, building, key generation, configuration, running the server, and requesting your first certificate.
 
 ## Features
 
