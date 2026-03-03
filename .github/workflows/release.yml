@@ -35,7 +35,7 @@ jobs:
           VERSION="${TAG#v}"
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          
+
           if [[ "$TAG" =~ -(alpha|beta|rc) ]]; then
             echo "prerelease=true" >> $GITHUB_OUTPUT
             echo "Pre-release detected: $TAG"
@@ -51,15 +51,6 @@ jobs:
           echo "Updated Cargo.toml to version $VERSION"
           grep "^version" Cargo.toml | head -1
 
-      - name: Update version in flake.nix
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          sed -i "30s/version = \".*\"/version = \"$VERSION\"/" flake.nix
-          sed -i "108s/version = \".*\"/version = \"$VERSION\"/" flake.nix
-          sed -i "165s/version = \".*\"/version = \"$VERSION\"/" flake.nix
-          echo "Updated flake.nix to version $VERSION"
-          grep -n "version = \"$VERSION\"" flake.nix
-
       - name: Commit version changes
         run: |
           VERSION="${{ steps.version.outputs.version }}"
@@ -72,7 +63,7 @@ jobs:
           TAG="${{ steps.version.outputs.tag }}"
           PRERELEASE="${{ steps.version.outputs.prerelease }}"
           DATE=$(date +%Y-%m-%d)
-          
+
           if [[ "$PRERELEASE" == "true" ]]; then
             echo "Adding pre-release section for $VERSION"
             awk -v version="$VERSION" -v date="$DATE" '
@@ -108,7 +99,7 @@ jobs:
             ' CHANGELOG.md > CHANGELOG.tmp
             mv CHANGELOG.tmp CHANGELOG.md
           fi
-          
+
           echo "CHANGELOG.md updated:"
           head -20 CHANGELOG.md
 
@@ -142,14 +133,14 @@ jobs:
             found && /^## \[/ { exit }
             found { print }
           ' CHANGELOG.md)
-          
+
           if [ -z "$NOTES" ]; then
             echo "No changelog entries found for version $VERSION, using default message"
             NOTES="Release $VERSION
 
           See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/${{ steps.version.outputs.tag }}/CHANGELOG.md) for details."
           fi
-          
+
           echo "$NOTES" > release-notes.md
           echo "Release notes:"
           cat release-notes.md
@@ -161,41 +152,41 @@ jobs:
           TAG="${{ steps.version.outputs.tag }}"
           VERSION="${{ steps.version.outputs.version }}"
           PRERELEASE="${{ steps.version.outputs.prerelease }}"
-          
+
           cat > final-release-notes.md << 'EOFNOTES'
           ## Debian Packages
-          
+
           Download the appropriate .deb package for your system:
-          
+
           EOFNOTES
-          
+
           cat >> final-release-notes.md << EOFNOTES2
           - **Server**: \`ssh-ca-server_${VERSION}_amd64.deb\` - SSH Certificate Authority server
           - **Client**: \`ssh-ca-client_${VERSION}_all.deb\` - Client scripts for certificate signing
-          
+
           ### Installation
-          
+
           \`\`\`bash
           # Install server (Debian/Ubuntu)
           sudo dpkg -i ssh-ca-server_${VERSION}_amd64.deb
           sudo apt-get install -f
-          
+
           # Install client (Debian/Ubuntu)
           sudo dpkg -i ssh-ca-client_${VERSION}_all.deb
           \`\`\`
-          
+
           See the [Setup Guide](https://github.com/${{ github.repository }}/blob/$TAG/documentation/setup.md) for configuration instructions.
-          
+
           ---
-          
+
           ## Changelog
-          
+
           EOFNOTES2
-          
+
           cat release-notes.md >> final-release-notes.md
-          
+
           echo "Creating release $TAG..."
-          
+
           if [[ "$PRERELEASE" == "true" ]]; then
             gh release create "$TAG" \
               --title "$TAG" \
@@ -212,5 +203,5 @@ jobs:
               result-client/*.deb
             echo "Release created: $TAG"
           fi
-          
+
           echo "Release URL: https://github.com/${{ github.repository }}/releases/tag/$TAG"
