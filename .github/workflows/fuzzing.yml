@@ -34,6 +34,7 @@ jobs:
 
   publish_coverage:
     needs: fuzzing_test
+    if: github.ref_type != 'tag'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
